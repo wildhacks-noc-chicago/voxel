@@ -1,0 +1,103 @@
+{
+    "timestamp": "2025-04-05T15:38:49.548498",
+    "results": {
+        "google": [
+            {
+                "text": "the quick brown fox jumps over the lazy",
+                "expected": "the quick brown fox jumps over the lazy dog",
+                "accuracy": 0.8888888888888888,
+                "time": 1.1102039813995361
+            },
+            {
+                "text": "how much wood would a woodchuck chuck if a woodchuck could chuck wood",
+                "expected": "how much wood would a woodchuck chuck if a woodchuck could chuck wood",
+                "accuracy": 1.0,
+                "time": 1.5163459777832031
+            },
+            {
+                "text": "she sell",
+                "expected": "she sells seashells by the seashore",
+                "accuracy": 0.16666666666666663,
+                "time": 1.2830450534820557
+            },
+            {
+                "text": "google.com",
+                "expected": "open a new browser tab and navigate to google dot com",
+                "accuracy": 0,
+                "time": 0.43294692039489746
+            },
+            {
+                "text": "it actually there's an error in the code",
+                "expected": "move the cursor to the right and click on the button",
+                "accuracy": 0.09090909090909094,
+                "time": 2.84367299079895
+            }
+        ],
+        "whisper": [],
+        "sphinx": [
+            {
+                "text": "that way brown fall good job so really ze dong",
+                "expected": "the quick brown fox jumps over the lazy dog",
+                "accuracy": 0,
+                "time": 0.6499922275543213
+            },
+            {
+                "text": "palm wedgwood will lead to shovel would jack good to avoid",
+                "expected": "how much wood would a woodchuck chuck if a woodchuck could chuck wood",
+                "accuracy": 0,
+                "time": 0.6662230491638184
+            },
+            {
+                "text": "i know is that she is she's sales",
+                "expected": "she sells seashells by the seashore",
+                "accuracy": 0,
+                "time": 0.5931718349456787
+            },
+            {
+                "text": "good good good girl",
+                "expected": "open a new browser tab and navigate to google dot com",
+                "accuracy": 0,
+                "time": 0.38378119468688965
+            },
+            {
+                "text": "yes he's meeting with slough of an elliptical in action in the good",
+                "expected": "move the cursor to the right and click on the button",
+                "accuracy": 0,
+                "time": 1.2894558906555176
+            }
+        ],
+        "vosk": [
+            {
+                "text": "the quick brown fox jumps over the lazy dog",
+                "expected": "the quick brown fox jumps over the lazy dog",
+                "accuracy": 1.0,
+                "time": 0.6301140785217285
+            },
+            {
+                "text": "how much would would i would just chuck if a woodchuck good job would",
+                "expected": "how much wood would a woodchuck chuck if a woodchuck could chuck wood",
+                "accuracy": 0.46153846153846156,
+                "time": 0.5236201286315918
+            },
+            {
+                "text": "there was she is she sells",
+                "expected": "she sells seashells by the seashore",
+                "accuracy": 0,
+                "time": 0.3934311866760254
+            },
+            {
+                "text": "google dot com",
+                "expected": "open a new browser tab and navigate to google dot com",
+                "accuracy": 0.2727272727272727,
+                "time": 0.31398916244506836
+            },
+            {
+                "text": "yeah see the of you're using whisper this motherfucker in never decks oh wait actually there's an error in the good",
+                "expected": "move the cursor to the right and click on the button",
+                "accuracy": 0,
+                "time": 0.7559218406677246
+            }
+        ],
+        "azure": []
+    }
+}
