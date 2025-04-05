@@ -1,0 +1,13 @@
+{
+    "move_distance": 20,
+    "command_timeout": 5,
+    "speech_engine": "google",
+    "whisper_model": "base",
+    "shortcuts": {
+        "google": "google.com",
+        "youtube": "youtube.com",
+        "github": "github.com",
+        "twitter": "twitter.com",
+        "maps": "maps.google.com"
+    }
+}

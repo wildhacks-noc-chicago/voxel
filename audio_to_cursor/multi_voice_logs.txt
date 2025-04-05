@@ -1,0 +1,72 @@
+2025-04-05 16:01:22 | Multi-Engine Results:
+  Sphinx: 'move the cursor today it'
+  Vosk: 'move the cursor to the raid'
+  Google: 'move the cursor to the right'
+  Final interpretation: 'move cursor right'
+
+2025-04-05 16:01:30 | Multi-Engine Results:
+  Sphinx: 'was muffled actually fought and fool'
+  Vosk: 'all this motherfucker actually fuck to the school'
+  Google: 'who is motherfuker actually fucked in the school'
+  Final interpretation: 'move cursor right'
+
+2025-04-05 16:01:35 | Multi-Engine Results:
+  Sphinx: 'no'
+  Final interpretation: 'move cursor down'
+
+2025-04-05 16:01:51 | Multi-Engine Results:
+  Sphinx: 'mercer left'
+  Vosk: 'mercer left'
+  Google: 'grocery list'
+  Final interpretation: 'move cursor left'
+
+2025-04-05 16:01:57 | Multi-Engine Results:
+  Sphinx: 'but he is as a matter'
+  Vosk: 'okay as is actually mapping it'
+  Final interpretation: 'but he is as a matter'
+
+2025-04-05 16:04:34 | Multi-Engine Results:
+  Sphinx: 'the mole that goes into their eyes'
+  Vosk: 'they move the cursor to the right'
+  Google: 'move the cursor to the right'
+  Final interpretation: 'move cursor right'
+
+2025-04-05 16:04:43 | Multi-Engine Results:
+  Sphinx: 'is it move closer and it is an excuse the wall'
+  Vosk: 'there's a move cursor right it is gonna execute that come on'
+  Google: 'it's going to execute that'
+  Final interpretation: 'move cursor right'
+
+2025-04-05 16:04:51 | Multi-Engine Results:
+  Sphinx: 'but it's'
+  Vosk: 'yeah'
+  Final interpretation: 'click'
+
+2025-04-05 16:05:03 | Multi-Engine Results:
+  Sphinx: 'is that some day and a random shithead enough blood do so'
+  Vosk: 'yes like some down if i say a random shit right an actually do some'
+  Google: 'it's like sometime if i say a random shit right then i told her'
+  Final interpretation: 'move cursor down'
+
+2025-04-05 16:05:12 | Multi-Engine Results:
+  Sphinx: 'and it's a lot of oblivion is the best way that they sign this'
+  Vosk: 'it's a map and nobody at him so that's what we're at right inside as it'
+  Google: 'so that's what we're at right now'
+  Final interpretation: 'so that's what we're at right now'
+
+2025-04-05 16:05:21 | Multi-Engine Results:
+  Sphinx: 'i thank you is it to'
+  Vosk: 'the only cure it's as picks randomly'
+  Final interpretation: 'click'
+
+2025-04-05 16:05:26 | Multi-Engine Results:
+  Sphinx: 'that's the idea of'
+  Vosk: 'the naked do'
+  Final interpretation: 'click'
+
+2025-04-05 16:05:40 | Multi-Engine Results:
+  Sphinx: 'licensing system that is even better in the quality of life you know well why is it captain'
+  Vosk: 'ice filtering system right it'll be even better in the quality of like you know i'm always had captures'
+  Google: 'noyes filtering system right it'll be even better in the quality of like you know why is it captures'
+  Final interpretation: 'move cursor right'
+
