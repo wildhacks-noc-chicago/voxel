@@ -4,3 +4,4 @@ pyautogui
 numpy
 keyboard
 torch
+PyQt6
