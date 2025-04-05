@@ -2,8 +2,8 @@ import cv2
 import mediapipe as mp
 import pyautogui
 import numpy as np
-from math import hypot
 import platform
+import time
 
 class NoseTracker:
     def __init__(self, headless=False, default_sensitivity=8.0):
@@ -65,14 +65,55 @@ class NoseTracker:
                     return i
                 cap.release()
         return 0
-
+    
     def calibrate(self):
-        print("Starting calibration...")
-        print("Look straight at the camera and press 'c' to calibrate")
-        
         face_center = None
         nose_center = None
         
+        ret, frame = self.cap.read()
+        if not ret:
+            return False
+            
+        frame = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.face_mesh.process(rgb_frame)
+        
+        if results.multi_face_landmarks:
+            mesh_points = np.array([np.multiply([p.x, p.y], [frame.shape[1], frame.shape[0]]).astype(int) 
+                                  for p in results.multi_face_landmarks[0].landmark])
+            
+            nose_tip = mesh_points[4]
+            face_center = np.mean(mesh_points, axis=0).astype(int)
+            
+            if not self.headless:
+                cv2.circle(frame, tuple(nose_tip), 5, (0, 255, 0), -1)
+                cv2.circle(frame, tuple(face_center), 5, (255, 0, 0), -1)
+                cv2.line(frame, tuple(face_center), tuple(nose_tip), (0, 255, 255), 2)
+                cv2.imshow('Nose Tracking', frame)
+            
+            nose_center = (nose_tip[0] - face_center[0], nose_tip[1] - face_center[1])
+            self.face_center = face_center
+            self.nose_center = nose_center
+            return True
+            
+        return False
+
+    def calibrate_using_keypress(self):
+        print("Starting calibration...")
+        
+        if self.headless:
+            print("Headless mode: Attempting automatic calibration...")
+            max_attempts = 10
+            for attempt in range(max_attempts):
+                if self.calibrate():
+                    print("Calibration complete!")
+                    return
+                print(f"Calibration attempt {attempt + 1}/{max_attempts} failed, retrying...")
+                time.sleep(0.5)  # Wait a bit before retrying
+            print("Calibration failed after multiple attempts. Please check your camera and lighting conditions.")
+            return
+        
+        print("Look straight at the camera and press 'c' to calibrate")
         while True:
             ret, frame = self.cap.read()
             if not ret:
@@ -98,16 +139,19 @@ class NoseTracker:
             
             key = cv2.waitKey(1) & 0xFF if not self.headless else 0
             if key == ord('c'):
-                if results.multi_face_landmarks:
-                    nose_center = (nose_tip[0] - face_center[0], nose_tip[1] - face_center[1])
+                if self.calibrate():
+                    print("Calibration complete!")
                     break
-        
-        print("Calibration complete!")
-        self.face_center = face_center
-        self.nose_center = nose_center
+                else:
+                    print("Calibration failed, please try again")
 
     def run(self):
-        self.calibrate()
+        self.calibrate_using_keypress()
+        
+        # Check if calibration was successful
+        if not hasattr(self, 'face_center') or not hasattr(self, 'nose_center'):
+            print("Error: Calibration failed. Cannot start nose tracking.")
+            return
         
         while True:
             ret, frame = self.cap.read()
