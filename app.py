@@ -1,5 +1,5 @@
 import argparse
-from pynosetracker import NoseTracker
+from gui import main as gui_main
 
 def main():
     parser = argparse.ArgumentParser(description='Nose Tracking Mouse Control')
@@ -8,9 +8,12 @@ def main():
     
     args = parser.parse_args()
     
-    # Create and run the nose tracker
-    tracker = NoseTracker(headless=args.headless, default_sensitivity=args.sensitivity)
-    tracker.run()
+    if args.headless:
+        from pynosetracker import NoseTracker
+        tracker = NoseTracker(headless=True, default_sensitivity=args.sensitivity)
+        tracker.run()
+    else:
+        gui_main()
 
 if __name__ == '__main__':
-    main() 
+    main()
