@@ -3,7 +3,7 @@ import mediapipe as mp
 import pyautogui
 import numpy as np
 from math import hypot
-import time
+import platform
 
 class NoseTracker:
     def __init__(self, headless=False, default_sensitivity=8.0):
@@ -12,6 +12,11 @@ class NoseTracker:
         self.base_sensitivity = 2.0
         self.smoothing = 0.3
         self.prev_x, self.prev_y = 0, 0
+        
+        # Print system info
+        print(f"Python version: {platform.python_version()}")
+        print(f"System: {platform.system()} {platform.release()}")
+        print(f"Processor: {platform.processor()}")
         
         # Initialize mediapipe face detection
         self.mp_face_mesh = mp.solutions.face_mesh
@@ -28,7 +33,7 @@ class NoseTracker:
         self.cap = cv2.VideoCapture(self.camera_index)
         
         # Set camera to highest possible FPS
-        self.cap.set(cv2.CAP_PROP_FPS, 60)
+        self.cap.set(cv2.CAP_PROP_FPS, 120)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
         # Get screen dimensions
