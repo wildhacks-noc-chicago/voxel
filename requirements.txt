@@ -5,3 +5,11 @@ numpy
 keyboard
 torch
 PyQt6
+SpeechRecognition
+pynput
+pyaudio
+google-generativeai>=0.4.0
+pocketsphinx
+vosk
+azure-cognitiveservices-speech
+nltk
