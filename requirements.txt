@@ -7,7 +7,7 @@ torch
 PyQt6
 SpeechRecognition
 pynput
-pyaudio
+
 google-generativeai>=0.4.0
 pocketsphinx
 vosk
