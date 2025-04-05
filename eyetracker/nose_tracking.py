@@ -98,6 +98,10 @@ camera_index = get_builtin_camera()
 print(f"Using camera at index {camera_index}")
 cap = cv2.VideoCapture(camera_index)
 
+# Set camera to highest possible FPS
+cap.set(cv2.CAP_PROP_FPS, 60)  # Try to set to 60 FPS
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffer size
+
 # Get camera frame dimensions and create window
 ret, frame = cap.read()
 if ret:
@@ -115,11 +119,11 @@ face_center = calibration['face_center']
 pyautogui.FAILSAFE = False
 
 # Smoothing factor for cursor movement
-smoothing = 0.5
+smoothing = 0.3  # Reduced from 0.5 for faster response
 prev_x, prev_y = 0, 0
 
 # Sensitivity factor for cursor movement (1-10)
-sensitivity = 2.0
+sensitivity = 8.0
 base_sensitivity = 2.0
 
 while True:
@@ -155,7 +159,7 @@ while True:
         screen_x = screen_w // 2 + rel_x
         screen_y = screen_h // 2 + rel_y
         
-        # Apply smoothing
+        # Apply smoothing with reduced factor
         cursor_x = int(prev_x + (screen_x - prev_x) * smoothing)
         cursor_y = int(prev_y + (screen_y - prev_y) * smoothing)
         
@@ -178,7 +182,7 @@ while True:
     # Display the frame
     cv2.imshow('Nose Tracking', frame)
     
-    # Handle key presses
+    # Handle key presses with minimal delay
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q'):
         break
