@@ -10,7 +10,7 @@ from pynosetracker import NoseTracker
 class NoseTrackerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Nose Tracker")
+        self.setWindowTitle("Voxel")
         self.setGeometry(100, 100, 800, 600)
         
         # Initialize nose tracker
@@ -51,24 +51,44 @@ class NoseTrackerGUI(QMainWindow):
         controls_layout.addLayout(sensitivity_layout)
         
         # Buttons
-        self.calibrate_button = QPushButton("Calibrate")
+        self.calibrate_button = QPushButton("Calibrate (C)")
         self.calibrate_button.clicked.connect(self.start_calibration)
         controls_layout.addWidget(self.calibrate_button)
         
-        self.start_button = QPushButton("Start Tracking")
+        self.start_button = QPushButton("Start Tracking (T)")
         self.start_button.clicked.connect(self.toggle_tracking)
         controls_layout.addWidget(self.start_button)
         
-        self.recenter_button = QPushButton("Recenter")
+        self.recenter_button = QPushButton("Recenter (R)")
         self.recenter_button.clicked.connect(self.recenter)
         controls_layout.addWidget(self.recenter_button)
         
         layout.addLayout(controls_layout)
         
+        # Add keyboard shortcuts help
+        shortcuts_label = QLabel("Keyboard Shortcuts:\nC - Calibrate\nR - Recenter\nT - Toggle Tracking")
+        shortcuts_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(shortcuts_label)
+        
         # Timer for updating camera feed
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30)  # Update every 30ms
+        
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_C:
+            self.start_calibration()
+        elif event.key() == Qt.Key.Key_T:
+            self.toggle_tracking()
+        elif event.key() == Qt.Key.Key_R:
+            self.recenter()
+        elif event.key() >= Qt.Key.Key_1 and event.key() <= Qt.Key.Key_9:
+            # Handle sensitivity changes (1-9)
+            value = event.key() - Qt.Key.Key_0
+            self.sensitivity_slider.setValue(value)
+        elif event.key() == Qt.Key.Key_0:
+            # Handle sensitivity 10
+            self.sensitivity_slider.setValue(10)
         
     def update_sensitivity(self, value):
         self.tracker.sensitivity = self.tracker.base_sensitivity * value
@@ -85,8 +105,11 @@ class NoseTrackerGUI(QMainWindow):
         
         if success:
             self.calibrating = False
-            self.status_label.setText("Status: Calibrated")
-            self.calibrate_button.setText("Calibrate")
+            if self.tracking_active:
+                self.status_label.setText("Status: Tracking")
+            else:
+                self.status_label.setText("Status: Calibrated")
+            self.calibrate_button.setText("Calibrate (C)")
             self.calibrate_button.setEnabled(True)
             QMessageBox.information(self, "Calibration", "Calibration successful!")
             return annotated_frame
@@ -95,7 +118,7 @@ class NoseTrackerGUI(QMainWindow):
             if self.calibration_attempts >= self.max_calibration_attempts:
                 self.calibrating = False
                 self.status_label.setText("Status: Calibration Failed")
-                self.calibrate_button.setText("Calibrate")
+                self.calibrate_button.setText("Calibrate (C)")
                 self.calibrate_button.setEnabled(True)
                 QMessageBox.warning(self, "Calibration Failed", 
                                   "Could not detect face. Please ensure your face is visible and well-lit.")
@@ -107,12 +130,15 @@ class NoseTrackerGUI(QMainWindow):
                 QMessageBox.warning(self, "Error", "Please calibrate first!")
                 return
             self.tracking_active = True
-            self.start_button.setText("Stop Tracking")
+            self.start_button.setText("Stop Tracking (T)")
             self.status_label.setText("Status: Tracking")
         else:
-            self.tracking_active = False
-            self.start_button.setText("Start Tracking")
-            self.status_label.setText("Status: Ready")
+            self.stop_tracking()
+            
+    def stop_tracking(self):
+        self.tracking_active = False
+        self.start_button.setText("Start Tracking")
+        self.status_label.setText("Status: Ready")
             
     def recenter(self):
         screen_w, screen_h = self.tracker.screen_w, self.tracker.screen_h
