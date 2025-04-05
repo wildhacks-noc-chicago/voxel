@@ -35,6 +35,9 @@ def calibrate(cap, face_mesh):
     # Store eye positions for each calibration point
     eye_positions = []
     
+    # Store the face center for normalization
+    face_center = None
+    
     for i, (target_x, target_y) in enumerate(calibration_points):
         print(f"Look at corner {i+1} (press 'c' when ready)")
         
@@ -50,6 +53,12 @@ def calibrate(cap, face_mesh):
             if results.multi_face_landmarks:
                 mesh_points = np.array([np.multiply([p.x, p.y], [frame.shape[1], frame.shape[0]]).astype(int) 
                                       for p in results.multi_face_landmarks[0].landmark])
+                
+                # Calculate face center if not already set
+                if face_center is None:
+                    face_center = np.mean(mesh_points, axis=0).astype(int)
+                    # Store the frame center for reference
+                    frame_center = (frame.shape[1] // 2, frame.shape[0] // 2)
                 
                 # Get eye landmarks
                 left_eye = [mesh_points[145], mesh_points[159]]
@@ -68,6 +77,10 @@ def calibrate(cap, face_mesh):
                 cv2.circle(frame, tuple(left_center), 3, (0, 0, 255), -1)
                 cv2.circle(frame, tuple(right_center), 3, (0, 0, 255), -1)
                 
+                # Draw face center and frame center
+                cv2.circle(frame, tuple(face_center), 5, (255, 0, 0), -1)
+                cv2.circle(frame, frame_center, 5, (255, 255, 0), -1)
+                
                 # Show target point
                 target_x, target_y = calibration_points[i]
                 # Offset the text position by 20 pixels to make it more visible
@@ -79,10 +92,13 @@ def calibrate(cap, face_mesh):
             
             if cv2.waitKey(1) & 0xFF == ord('c'):
                 if results.multi_face_landmarks:
-                    eye_positions.append((gaze_x, gaze_y))
+                    # Store the relative position of the gaze point from the face center
+                    relative_gaze_x = gaze_x - face_center[0]
+                    relative_gaze_y = gaze_y - face_center[1]
+                    eye_positions.append((relative_gaze_x, relative_gaze_y))
                 break
     
-    # Calculate mapping parameters
+    # Calculate mapping parameters using relative positions
     eye_x_min = min(p[0] for p in eye_positions)
     eye_x_max = max(p[0] for p in eye_positions)
     eye_y_min = min(p[1] for p in eye_positions)
@@ -92,7 +108,8 @@ def calibrate(cap, face_mesh):
     return {
         'eye_x_range': (eye_x_min, eye_x_max),
         'eye_y_range': (eye_y_min, eye_y_max),
-        'screen_size': (screen_w, screen_h)
+        'screen_size': (screen_w, screen_h),
+        'face_center': face_center
     }
 
 # Initialize mediapipe face detection
@@ -114,6 +131,7 @@ calibration = calibrate(cap, face_mesh)
 eye_x_min, eye_x_max = calibration['eye_x_range']
 eye_y_min, eye_y_max = calibration['eye_y_range']
 screen_w, screen_h = calibration['screen_size']
+face_center = calibration['face_center']
 
 # Disable pyautogui's fail-safe
 pyautogui.FAILSAFE = False
@@ -152,11 +170,11 @@ while True:
         left_center = np.mean(left_eye, axis=0).astype(int)
         right_center = np.mean(right_eye, axis=0).astype(int)
         
-        # Calculate gaze point
-        gaze_x = int((left_center[0] + right_center[0]) / 2)
-        gaze_y = int((left_center[1] + right_center[1]) / 2)
+        # Calculate gaze point relative to face center
+        gaze_x = int((left_center[0] + right_center[0]) / 2) - face_center[0]
+        gaze_y = int((left_center[1] + right_center[1]) / 2) - face_center[1]
         
-        # Map eye position to screen coordinates using calibrated ranges
+        # Map relative eye position to screen coordinates using calibrated ranges
         screen_x = np.interp(gaze_x, [eye_x_min, eye_x_max], [0, screen_w])
         screen_y = np.interp(gaze_y, [eye_y_min, eye_y_max], [0, screen_h])
         
@@ -171,9 +189,10 @@ while True:
         prev_x, prev_y = cursor_x, cursor_y
         
         # Draw visual feedback
-        cv2.circle(frame, (gaze_x, gaze_y), 5, (0, 255, 0), -1)
+        cv2.circle(frame, (gaze_x + face_center[0], gaze_y + face_center[1]), 5, (0, 255, 0), -1)
         cv2.circle(frame, tuple(left_center), 3, (0, 0, 255), -1)
         cv2.circle(frame, tuple(right_center), 3, (0, 0, 255), -1)
+        cv2.circle(frame, tuple(face_center), 5, (255, 0, 0), -1)
 
     # Display the frame
     cv2.imshow('Eye Tracking', frame)
