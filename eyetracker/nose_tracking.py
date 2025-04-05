@@ -118,8 +118,9 @@ pyautogui.FAILSAFE = False
 smoothing = 0.5
 prev_x, prev_y = 0, 0
 
-# Sensitivity factor for cursor movement
+# Sensitivity factor for cursor movement (1-10)
 sensitivity = 2.0
+base_sensitivity = 2.0
 
 while True:
     ret, frame = cap.read()
@@ -169,8 +170,10 @@ while True:
         cv2.circle(frame, tuple(face_center), 5, (255, 0, 0), -1)
         cv2.line(frame, tuple(face_center), tuple(nose_tip), (0, 255, 255), 2)
         
-        # Show recenter instructions
-        cv2.putText(frame, "Press 'c' to recenter", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        # Show sensitivity and recenter instructions
+        normalized_sensitivity = sensitivity / base_sensitivity
+        cv2.putText(frame, f"Sensitivity: {normalized_sensitivity:.0f}/10", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(frame, "Press 'c' to recenter", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     # Display the frame
     cv2.imshow('Nose Tracking', frame)
@@ -183,6 +186,12 @@ while True:
         # Recenter the cursor
         pyautogui.moveTo(screen_w // 2, screen_h // 2)
         prev_x, prev_y = screen_w // 2, screen_h // 2
+    elif key >= ord('1') and key <= ord('9'):
+        # Set sensitivity based on number key (1-9)
+        sensitivity = base_sensitivity * (key - ord('0'))
+    elif key == ord('0'):
+        # Set sensitivity to 10
+        sensitivity = base_sensitivity * 10
 
 # Release resources
 cap.release()
