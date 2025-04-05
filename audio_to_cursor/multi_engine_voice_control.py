@@ -9,13 +9,27 @@ import time
 
 import google.generativeai as genai
 import speech_recognition as sr
+from pyautogui_command_executor import PyAutoGUICommandExecutor
 from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 from pynput.mouse import Button
 from pynput.mouse import Controller as MouseController
 
-from voice_control import VoiceControl, logger
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='multi_engine_voice_control.log'
+)
+logger = logging.getLogger("MultiEngineVoiceControl")
 
+# Try to import PyAutoGUI command executor
+try:
+    pyautogui_available = True
+    logger.info("PyAutoGUI command executor imported successfully")
+except ImportError:
+    pyautogui_available = False
+    logger.warning("PyAutoGUI command executor not available. Will use fallback methods.")
 
 def load_env_file():
     """Load environment variables from .env file"""
@@ -230,7 +244,6 @@ class MultiEngineSpeechRecognition:
     def listen_and_recognize(self):
         """Listen for voice input and recognize using multiple engines"""
         with sr.Microphone() as source:
-            print("Listening...")
             self.recognizer.adjust_for_ambient_noise(source)
             try:
                 audio = self.recognizer.listen(source, timeout=self.command_timeout)
@@ -272,14 +285,6 @@ class MultiEngineSpeechRecognition:
         results = []
         while not self.results_queue.empty():
             results.append(self.results_queue.get())
-        
-        # Print all recognition results
-        print("\nRecognition results:")
-        for result in results:
-            if result["text"]:
-                print(f"{result['engine'].capitalize()}: '{result['text']}'")
-            else:
-                print(f"{result['engine'].capitalize()}: No result")
         
         return results
 
@@ -351,25 +356,29 @@ class GeminiIntentMapper:
         
         # Create the prompt for Gemini
         prompt = f"""
-        Task: You are a voice command interpreter for a computer control system. You will be fed a list of recognisied voice commands from different voice recognition engines.
-        If any of the voice commands, have a keyword from the list fed to you below, just map to that command. Otherwise, if there are multiple matches,
-        do a simple voting system to determine the best match.
+        Task: You are a voice command interpreter for a computer control system. Map speech recognition results to the correct command.
         
-        Available keyword to command mapping:
+        Available commands:
         {commands_json}
         
-        Speech recognition engine results:
+        Speech recognition results from multiple engines:
         {recognition_results_str}
+
+        RULES (in priority order):
+        1. If ANY recognition engine exactly matches a command from the available commands list, use that command.
+        2. If ANY recognition engine's result is within 1-2 characters of a command (like "clik" vs "click"), use the command.
+        3. Only if no match is found, look for semantic matches or substrings.
         
-        Guidelines:
-        1. Your task is to analyze all transcriptions from different engines and identify the most likely command.
-        2. Different engines may have different errors or misinterpretations.
-        3. Match to the closest available command from the list based on all the keywords from the different engines.
-        4. Understand variations and natural language. For example, "move right" should match to "move cursor right".
-        5. Return ONLY the exact command string as listed in the available commands.
-        6. Do not add any explanations, formatting, or extra text in your response.{history_context}
+        Examples:
+        - If engines recognized: ["clip", "click", null] → return "click" (exact match to available command)
+        - If engines recognized: ["write", "right", "rite"] → return "right" (exact match to available command)
+        - If engines recognized: ["moved own", "move down", null] → return "down" (semantic match to command)
         
-        Your response (exact command string only):
+        IMPORTANT: If multiple engines recognized valid commands, prioritize the exact matches in the available commands list.
+        
+        Return ONLY the exact command string from the available commands list. Return nothing if no match can be made.
+        
+        Command:
         """
         
         logger.info(f"Sending request to Gemini API for multi-engine recognition")
@@ -394,17 +403,21 @@ class GeminiIntentMapper:
             matched_command = matched_command.strip('"\'`')  # Remove quotes if present
             logger.info(f"Gemini matched multi-engine results to '{matched_command}'")
             
-            # Handle unknown response
-            if matched_command.lower() == "unknown":
-                logger.info("Gemini returned 'unknown' match")
-                # Use the Google result as fallback
+            # Handle empty or unknown responses
+            if not matched_command or matched_command.lower() in ["unknown", "none", "n/a", ""]:
+                logger.info("Gemini returned no valid match")
+                # Try direct exact matching as fallback
                 for result in recognition_results:
-                    if result["engine"] == "google" and result["text"]:
+                    if result["text"] and result["text"] in self.available_commands:
+                        logger.info(f"Direct matching found command: {result['text']}")
                         return result["text"]
-                # Or the first available result
-                for result in recognition_results:
-                    if result["text"]:
-                        return result["text"]
+                
+                # If no direct match, try the closest match with edit distance
+                closest_command = self._find_closest_command(recognition_results)
+                if closest_command:
+                    logger.info(f"Found closest command match: {closest_command}")
+                    return closest_command
+                    
                 return None
             
             # Check if this is in our available commands
@@ -416,14 +429,18 @@ class GeminiIntentMapper:
                 return matched_command
             else:
                 logger.warning(f"Gemini returned '{matched_command}' which is not in available commands")
-                # Use the Google result as fallback
+                # Try direct exact matching as fallback
                 for result in recognition_results:
-                    if result["engine"] == "google" and result["text"]:
+                    if result["text"] and result["text"] in self.available_commands:
+                        logger.info(f"Direct matching found command: {result['text']}")
                         return result["text"]
-                # Or the first available result
-                for result in recognition_results:
-                    if result["text"]:
-                        return result["text"]
+                
+                # If no direct match, try the closest match with edit distance
+                closest_command = self._find_closest_command(recognition_results)
+                if closest_command:
+                    logger.info(f"Found closest command match: {closest_command}")
+                    return closest_command
+                
                 return None
                 
         except Exception as e:
@@ -443,33 +460,94 @@ class GeminiIntentMapper:
     def _create_command_descriptions(self):
         """Create descriptive explanations for each command"""
         return {
-            # Mouse commands with descriptions
+            # Mouse movement commands
             "right": "move cursor right",
             "left": "move cursor left",
             "up": "move cursor up",
             "down": "move cursor down",
-            "click": "click",
-            "enter": "click",
-            "left click": "left click",
-            "right click": "right click",
+            
+            # Mouse click commands
+            "click": "click the mouse",
+            "enter": "click the mouse",
+            "left click": "left click the mouse",
+            "right click": "right click the mouse",
+            
+            # Exit commands
+            "exit": "exit the program",
+            "quit": "quit the program",
+            "stop listening": "stop the program",
+            
+            # Website shortcuts
             **{f"go to {site}": f"Navigate to the {site} website" for site in self.shortcuts.keys()}
         }
 
+    def _find_closest_command(self, recognition_results):
+        """Find the closest command match using edit distance"""
+        best_command = None
+        min_distance = float('inf')
+        
+        # For each recognition result
+        for result in recognition_results:
+            if not result["text"]:
+                continue
+                
+            # Find the closest command from available commands
+            input_text = result["text"].lower()
+            for cmd in self.available_commands:
+                cmd_lower = cmd.lower()
+                distance = self._levenshtein_distance(input_text, cmd_lower)
+                
+                # Only consider close matches (<=2 edits)
+                if distance <= 2 and distance < min_distance:
+                    min_distance = distance
+                    best_command = cmd
+        
+        return best_command
+    
+    def _levenshtein_distance(self, s1, s2):
+        """Calculate the Levenshtein edit distance between two strings"""
+        if len(s1) < len(s2):
+            return self._levenshtein_distance(s2, s1)
+            
+        if len(s2) == 0:
+            return len(s1)
+            
+        previous_row = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+            
+        return previous_row[-1]
 
 
 class MultiEngineVoiceControl:
     """Main class for voice control using multiple speech recognition engines"""
     
-    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt"):
+    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt", move_distance=100):
         # Load environment variables
         load_env_file()
-        
-        # Initialize base voice control (used for command execution)
-        self.voice_control = VoiceControl(config_file)
         
         # Set up logging
         self.log_file = log_file
         
+        # Check if PyAutoGUI command executor is available
+        self.pyautogui_executor = None
+        if pyautogui_available:
+            try:
+                self.pyautogui_executor = PyAutoGUICommandExecutor(move_distance=move_distance)
+                logger.info("PyAutoGUI command executor initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize PyAutoGUI command executor: {e}")
+                print(f"Warning: Failed to initialize PyAutoGUI command executor: {e}")
+                print("Falling back to pynput for mouse and keyboard control.")
+        
+    
+                
         # Get API key for Gemini
         self.api_key = os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
@@ -478,24 +556,33 @@ class MultiEngineVoiceControl:
             sys.exit(1)
         
         # Initialize multi-engine speech recognition
+        command_timeout = 10  # Default timeout
+        if hasattr(self, 'voice_control') and hasattr(self.voice_control, 'command_timeout'):
+            command_timeout = self.voice_control.command_timeout
+            
         self.speech_module = MultiEngineSpeechRecognition(
             sr.Recognizer(),
-            command_timeout=self.voice_control.command_timeout
+            command_timeout=command_timeout
         )
         
         # Get all available commands
-        self.available_commands = list(self.voice_control.commands.keys()) + [
-            "open new tab", 
-            "close this tab", 
-            "open an incognito window"
-        ]
+        if self.pyautogui_executor:
+            self.available_commands = list(self.pyautogui_executor.commands.keys())
+            self.shortcuts = {}  # No shortcuts with PyAutoGUI for now
+        else:
+            self.available_commands = list(self.voice_control.commands.keys()) + [
+                "open new tab", 
+                "close this tab", 
+                "open an incognito window"
+            ]
+            self.shortcuts = self.voice_control.shortcuts
         
         # Initialize Gemini intent mapper
         try:
             self.intent_mapper = GeminiIntentMapper(
                 self.api_key,
                 self.available_commands,
-                self.voice_control.shortcuts
+                self.shortcuts
             )
             logger.info("Multi-engine voice control initialized with Gemini")
         except Exception as e:
@@ -522,23 +609,56 @@ class MultiEngineVoiceControl:
         # STEP 1: Multi-engine speech recognition
         recognition_results = self.speech_module.listen_and_recognize()
         if not recognition_results:
+            print("No speech detected or timeout occurred.")
             return None, True
         
-        # STEP 2: Intent mapping with Gemini using all recognition results
+        # Print what was recognized by each engine
+        print("\nRecognition results:")
+        for result in recognition_results:
+            if result["text"]:
+                print(f"  {result['engine'].capitalize()}: '{result['text']}'")
+            else:
+                print(f"  {result['engine'].capitalize()}: No result")
+        
+        # STEP 2: Check for direct matches first (optimization)
+        for result in recognition_results:
+            if result["text"] and result["text"].lower() in [cmd.lower() for cmd in self.available_commands]:
+                interpreted_command = next(cmd for cmd in self.available_commands if cmd.lower() == result["text"].lower())
+                print(f"\n✅ Direct match found: '{interpreted_command}'")
+                
+                # Log the command
+                self.log_command(recognition_results, interpreted_command)
+                
+                # Execute the command
+                if self.pyautogui_executor:
+                    should_continue = self.pyautogui_executor.execute_command(interpreted_command)
+                else:
+                    should_continue = self.voice_control.execute_command(interpreted_command)
+                
+                return interpreted_command, should_continue
+        
+        # STEP 3: Intent mapping with Gemini for more complex cases
+        print("\nProcessing with AI interpretation...")
         interpreted_command = self.intent_mapper.map_multi_engine_intent(recognition_results)
         
         if not interpreted_command:
-            print("Could not interpret the command.")
+            print("❌ Could not interpret the command. Try again with a clearer command.")
             return None, True
         
         # Log the command and interpretation
         self.log_command(recognition_results, interpreted_command)
         
         # Show final interpretation
-        print(f"Final interpretation: '{interpreted_command}'")
+        print(f"\n🎯 Final interpretation: '{interpreted_command}'")
         
-        # STEP 3: Execute the command using voice_control.py
-        should_continue = self.voice_control.execute_command(interpreted_command)
+        # STEP 4: Execute the command
+        print(f"Executing: '{interpreted_command}'")
+        if self.pyautogui_executor:
+            # Use PyAutoGUI command executor if available
+            should_continue = self.pyautogui_executor.execute_command(interpreted_command)
+        else:
+            # Fall back to traditional voice control
+            should_continue = self.voice_control.execute_command(interpreted_command)
         
         return interpreted_command, should_continue
     
@@ -558,20 +678,38 @@ class MultiEngineVoiceControl:
         print("\nAll recognition results are fed to Gemini AI for better command interpretation.")
         print("You can speak naturally to control your computer.")
         
-        print("\nExamples:")
-        print("  - 'Move the cursor to the right' or 'Go right'")
-        print("  - 'Click here' or 'Select this'")
-        print("  - 'Open a new tab' or 'Create tab'")
-        print("  - 'Close the program' or 'Exit'")
+        # Show command execution method
+        if self.pyautogui_executor:
+            print("\nUsing PyAutoGUI for mouse and keyboard control.")
+        else:
+            print("\nUsing pynput for mouse and keyboard control.")
         
-        if self.voice_control.shortcuts:
+        print("\nAvailable commands:")
+        # Group commands by category for better readability
+        command_categories = {
+            "Mouse Movement": ["right", "left", "up", "down"],
+            "Mouse Actions": ["click", "left click", "right click"],
+            "System": ["exit", "quit", "stop listening"]
+        }
+        
+        for category, cmds in command_categories.items():
+            matching_cmds = [cmd for cmd in cmds if cmd in self.available_commands]
+            if matching_cmds:
+                print(f"  {category}:")
+                for cmd in matching_cmds:
+                    print(f"    - '{cmd}'")
+        
+        # Show website shortcuts if any
+        if self.shortcuts:
             print("\nCan navigate to these websites:")
-            for name in self.voice_control.shortcuts.keys():
+            for name in self.shortcuts.keys():
                 print(f"  - '{name}' (say 'go to {name}' or 'open {name}')")
         
         print("\nLogs will be saved to:")
         print(f"- Command logs: {self.log_file}")
         print(f"- Speech recognition logs: speech_recognition.log")
+        if self.pyautogui_executor:
+            print(f"- PyAutoGUI logs: pyautogui_commands.log")
         
         logger.info("Multi-engine voice control system started")
         
@@ -584,7 +722,7 @@ class MultiEngineVoiceControl:
 
 if __name__ == "__main__":
     try:
-        voice_control = MultiEngineVoiceControl()
+        voice_control = MultiEngineVoiceControl(move_distance=100)
         voice_control.run()
     except KeyboardInterrupt:
         logger.info("Program terminated by user")
