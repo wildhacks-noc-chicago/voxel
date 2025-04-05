@@ -26,3 +26,5 @@ TODO
 1. `cv2` - OpenCV wrapper for Python
 2. `mediapipe` - Face mesh provider for the webcam
 3. `numpy` - It's numpy
+4. `PyQt6` - Python GUI library for developing native applications
+5. `pyautogui` - Python library for programmatic mouse/keyboard control
