@@ -4,6 +4,7 @@ vosk-model-small-en-us-0.15.zip
 multi_voice_logs.txt
 audio_to_cursor/calibration.json
 audio_to_cursor/calibration_data
+whisper_models/
 
 
 # Byte-compiled / optimized / DLL files
