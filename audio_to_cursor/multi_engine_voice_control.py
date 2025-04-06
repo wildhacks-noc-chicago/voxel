@@ -15,11 +15,11 @@ from pynput.keyboard import Key
 from pynput.mouse import Button
 from pynput.mouse import Controller as MouseController
 
-from audio_to_cursor.calibration import (
-    CalibrationError,
-    CalibrationManager,
-    NoiseFilter,
-)
+# from audio_to_cursor.calibration import (
+#     CalibrationError,
+#     CalibrationManager,
+#     NoiseFilter,
+# )
 from audio_to_cursor.pyautogui_command_executor import PyAutoGUICommandExecutor
 
 # Configure logging
@@ -51,16 +51,15 @@ def load_env_file():
 class MultiEngineSpeechRecognition:
     """Handles speech recognition using multiple engines in parallel"""
     
-    def __init__(self, recognizer, command_timeout=5, use_old_calibration=False):
+    def __init__(self, recognizer, command_timeout=5): # use_old_calibration=False
         self.recognizer = recognizer
         self.command_timeout = command_timeout
         self.results_queue = queue.Queue()
-        self.use_old_calibration = use_old_calibration
-        logger.info(f"Initializing MultiEngineSpeechRecognition with use_old_calibration={use_old_calibration}")
+        # self.use_old_calibration = use_old_calibration
 
         # Initialize calibration
-        self.calibration_manager = CalibrationManager()
-        self.noise_filter = NoiseFilter(self.calibration_manager)
+        # self.calibration_manager = CalibrationManager()
+        # self.noise_filter = NoiseFilter(self.calibration_manager)
         
         # Check which engines are available
         self.engines_available = {
@@ -74,40 +73,40 @@ class MultiEngineSpeechRecognition:
                    f"Faster Whisper:{self.engines_available['faster_whisper']}")
         
         # Handle initial calibration
-        self.initialize_calibration()
+        # self.initialize_calibration()
 
-    def initialize_calibration(self):
-        """Initialize calibration once during startup"""
-        calibration_exists = os.path.exists(self.calibration_manager.calibration_file)
-        logger.info(f"Calibration file exists: {calibration_exists}, use_old_calibration: {self.use_old_calibration}")
+    # def initialize_calibration(self):
+    #     """Initialize calibration once during startup"""
+    #     calibration_exists = os.path.exists(self.calibration_manager.calibration_file)
+    #     logger.info(f"Calibration file exists: {calibration_exists}, use_old_calibration: {self.use_old_calibration}")
         
-        if calibration_exists and self.use_old_calibration:
-            print("\nUsing existing calibration...")
-            if self.noise_filter.load_noise_profile():
-                logger.info("Successfully loaded existing calibration")
-                return True
-            else:
-                logger.warning("Failed to load existing calibration, running new calibration...")
-                return self._run_calibration()
-        else:
-            if calibration_exists:
-                logger.info("Calibration exists but use_old_calibration is False, running new calibration...")
-            else:
-                logger.info("No calibration found, running new calibration...")
-            return self._run_calibration()
+    #     if calibration_exists and self.use_old_calibration:
+    #         print("\nUsing existing calibration...")
+    #         if self.noise_filter.load_noise_profile():
+    #             logger.info("Successfully loaded existing calibration")
+    #             return True
+    #         else:
+    #             logger.warning("Failed to load existing calibration, running new calibration...")
+    #             return self._run_calibration()
+    #     else:
+    #         if calibration_exists:
+    #             logger.info("Calibration exists but use_old_calibration is False, running new calibration...")
+    #         else:
+    #             logger.info("No calibration found, running new calibration...")
+    #         return self._run_calibration()
 
-    def _run_calibration(self):
-        """Run the calibration process"""
-        try:
-            logger.info("Starting calibration process...")
-            if not self.calibration_manager.calibrate():
-                logger.warning("Calibration failed. Voice recognition may be less accurate.")
-                return False
-            logger.info("Calibration completed successfully")
-            return True
-        except Exception as e:
-            logger.error(f"Calibration error: {e}")
-            return False
+    # def _run_calibration(self):
+    #     """Run the calibration process"""
+    #     try:
+    #         logger.info("Starting calibration process...")
+    #         if not self.calibration_manager.calibrate():
+    #             logger.warning("Calibration failed. Voice recognition may be less accurate.")
+    #             return False
+    #         logger.info("Calibration completed successfully")
+    #         return True
+    #     except Exception as e:
+    #         logger.error(f"Calibration error: {e}")
+    #         return False
 
     
     def _check_vosk_available(self):
@@ -325,27 +324,27 @@ class MultiEngineSpeechRecognition:
                 audio = self.recognizer.listen(source, timeout=self.command_timeout)
                 logger.info("Audio captured, processing with multiple engines...")
 
-                # Apply noise reduction if calibration exists
-                if self.noise_filter.noise_profile is not None:
-                    try:
-                        # Convert audio to numpy array
-                        audio_data = np.frombuffer(audio.get_raw_data(), dtype=np.int16)
-                        audio_data = audio_data.astype(np.float32) / 32768.0  # Convert to float32
+                # # Apply noise reduction if calibration exists
+                # if self.noise_filter.noise_profile is not None:
+                #     try:
+                #         # Convert audio to numpy array
+                #         audio_data = np.frombuffer(audio.get_raw_data(), dtype=np.int16)
+                #         audio_data = audio_data.astype(np.float32) / 32768.0  # Convert to float32
 
-                        # Apply noise reduction
-                        filtered_audio = self.noise_filter.filter_audio(audio_data)
+                #         # Apply noise reduction
+                #         filtered_audio = self.noise_filter.filter_audio(audio_data)
 
-                        # Convert back to audio data
-                        filtered_audio = (filtered_audio * 32768.0).astype(np.int16)
-                        audio = sr.AudioData(
-                            filtered_audio.tobytes(),
-                            sample_rate=self.calibration_manager.sample_rate,
-                            sample_width=2  # 16-bit audio
-                        )
-                        logger.info("Applied noise reduction to audio")
-                    except Exception as e:
-                        logger.error(f"Error applying noise reduction: {e}")
-                        # Continue with original audio if noise reduction fails
+                #         # Convert back to audio data
+                #         filtered_audio = (filtered_audio * 32768.0).astype(np.int16)
+                #         audio = sr.AudioData(
+                #             filtered_audio.tobytes(),
+                #             sample_rate=self.calibration_manager.sample_rate,
+                #             sample_width=2  # 16-bit audio
+                #         )
+                #         logger.info("Applied noise reduction to audio")
+                #     except Exception as e:
+                #         logger.error(f"Error applying noise reduction: {e}")
+                #         # Continue with original audio if noise reduction fails
 
             except sr.WaitTimeoutError:
                 logger.info("No speech detected within timeout")
@@ -633,7 +632,7 @@ class GeminiIntentMapper:
 class MultiEngineVoiceControl:
     """Main class for voice control using multiple speech recognition engines"""
     
-    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt", move_distance=100, use_old_calibration=False):
+    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt", move_distance=100): # use_old_calibration=False
         # Load environment variables
         load_env_file()
         
@@ -671,7 +670,7 @@ class MultiEngineVoiceControl:
         self.speech_module = MultiEngineSpeechRecognition(
             sr.Recognizer(),
             command_timeout=command_timeout,
-            use_old_calibration=use_old_calibration
+            # use_old_calibration=use_old_calibration
         )
         
         # Get all available commands

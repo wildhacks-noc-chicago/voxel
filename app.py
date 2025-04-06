@@ -39,7 +39,7 @@ def main():
     parser = argparse.ArgumentParser(description='Nose Tracking Mouse Control')
     parser.add_argument('--headless', action='store_true', help='Run in headless mode (no GUI)')
     parser.add_argument('--sensitivity', type=float, default=8.0, help='Default sensitivity (1-10)')
-    parser.add_argument('--use-old-calibration', action='store_true', help='Use existing calibration data if available')
+    # parser.add_argument('--use-old-calibration', action='store_true', help='Use existing calibration data if available')
     
     args = parser.parse_args()
     
