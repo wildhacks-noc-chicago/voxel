@@ -1,0 +1,43 @@
+2025-04-05 18:40:20 | Multi-Engine Results:
+  Sphinx: 'get it up'
+  Vosk: 'get up'
+  Final interpretation: 'up'
+
+2025-04-05 18:41:14 | Multi-Engine Results:
+  Sphinx: 'the thing a little bit clinic'
+  Vosk: 'click thing so a cloak'
+  Google: 'click'
+  Final interpretation: 'click'
+
+2025-04-05 18:52:31 | Multi-Engine Results:
+  Sphinx: 'down with'
+  Vosk: 'down'
+  Final interpretation: 'down'
+
+2025-04-05 18:52:50 | Multi-Engine Results:
+  Sphinx: 'knights'
+  Vosk: 'right'
+  Final interpretation: 'right'
+
+2025-04-05 18:53:48 | Multi-Engine Results:
+  Sphinx: 'hello'
+  Vosk: 'up'
+  Final interpretation: 'up'
+
+2025-04-05 18:53:53 | Multi-Engine Results:
+  Sphinx: 'the diego'
+  Vosk: 'click'
+  Google: 'click'
+  Final interpretation: 'click'
+
+2025-04-05 21:10:38 | Multi-Engine Results:
+  Sphinx: 'and that'
+  Vosk: 'click'
+  Google: 'click'
+  Final interpretation: 'click'
+
+2025-04-05 21:11:21 | Multi-Engine Results:
+  Sphinx: 'and that'
+  Vosk: 'click'
+  Final interpretation: 'click'
+
