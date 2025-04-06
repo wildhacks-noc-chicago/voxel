@@ -41,67 +41,36 @@
   Vosk: 'click'
   Final interpretation: 'click'
 
-2025-04-05 21:47:13 | Multi-Engine Results:
-  Sphinx: 'oh when they're frozen feet'
-  Vosk: 'open their browser'
-  Google: 'open the browser'
-  Final interpretation: 'open browser'
+2025-04-05 21:53:58 | Multi-Engine Results:
+  Sphinx: 'slated for'
+  Vosk: 'slick'
+  Final interpretation: 'click'
 
-2025-04-05 21:47:17 | Multi-Engine Results:
-  Sphinx: 'start typing'
-  Vosk: 'start typing'
-  Google: 'start typing'
-  Final interpretation: 'start typing'
-
-2025-04-05 21:51:28 | Multi-Engine Results:
-  Sphinx: 'open the browser'
-  Vosk: 'open the browser'
-  Google: 'open the browser'
-  Final interpretation: 'open browser'
-
-2025-04-05 21:51:36 | Multi-Engine Results:
-  Sphinx: 'start typing'
-  Vosk: 'start typing'
-  Google: 'start typing'
-  Final interpretation: 'start typing'
-
-2025-04-05 21:51:46 | Multi-Engine Results:
-  Sphinx: 'start typing'
-  Google: 'start typing'
-  Vosk: 'start typing'
-  Final interpretation: 'start typing'
-
-2025-04-05 21:52:01 | Multi-Engine Results:
-  Sphinx: 'if'
+2025-04-05 21:54:04 | Multi-Engine Results:
+  Sphinx: 'oh'
   Final interpretation: 'up'
 
-2025-04-05 21:53:27 | Multi-Engine Results:
-  Sphinx: 'open the browser'
-  Google: 'open the browser'
-  Vosk: 'open the browser'
-  Final interpretation: 'open browser'
-
-2025-04-05 21:53:31 | Multi-Engine Results:
-  Sphinx: 'start fighting'
-  Google: 'start typing'
-  Vosk: 'start typing'
-  Final interpretation: 'start typing'
-
-2025-04-05 21:53:41 | Multi-Engine Results:
-  Sphinx: 'start typing'
-  Vosk: 'start typing'
-  Google: 'start typing'
-  Final interpretation: 'start typing'
-
-2025-04-05 21:53:50 | Multi-Engine Results:
-  Sphinx: 'start typing'
-  Google: 'start typing'
-  Vosk: 'start typing'
-  Final interpretation: 'start typing'
-
-2025-04-05 21:54:15 | Multi-Engine Results:
-  Sphinx: 'and tired'
-  Vosk: 'enter'
+2025-04-05 21:54:09 | Multi-Engine Results:
+  Sphinx: 'it is'
+  Vosk: 'answer'
   Google: 'enter'
   Final interpretation: 'enter'
+
+2025-04-05 21:54:16 | Multi-Engine Results:
+  Sphinx: 'and that late'
+  Vosk: 'click'
+  Google: 'enter'
+  Final interpretation: 'click'
+
+2025-04-05 21:54:22 | Multi-Engine Results:
+  Sphinx: 'all right'
+  Vosk: 'more right'
+  Google: 'moon ride'
+  Final interpretation: 'right'
+
+2025-04-05 21:54:28 | Multi-Engine Results:
+  Sphinx: 'move the cursor disarray'
+  Vosk: 'move the cursor to the raid'
+  Google: 'move the cursor to the right'
+  Final interpretation: 'right'
 
