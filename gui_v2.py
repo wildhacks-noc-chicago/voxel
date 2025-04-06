@@ -459,14 +459,23 @@ class NoseTrackerGUIv2(QMainWindow):
         
         self.calibrate_button = QPushButton("Calibrate (C)")
         self.calibrate_button.clicked.connect(self.start_calibration)
+        self.calibrate_button.setStyleSheet(
+            "color: black;"
+        )
         button_layout.addWidget(self.calibrate_button)
         
         self.start_button = QPushButton("Start Tracking (T)")
         self.start_button.clicked.connect(self.toggle_tracking)
+        self.start_button.setStyleSheet(
+            "color: black;"
+        )
         button_layout.addWidget(self.start_button)
         
         self.recenter_button = QPushButton("Recenter (R)")
         self.recenter_button.clicked.connect(self.recenter)
+        self.recenter_button.setStyleSheet(
+            "color: black;"
+        )
         button_layout.addWidget(self.recenter_button)
         
         controls_layout.addLayout(button_layout)
@@ -603,12 +612,18 @@ class NoseTrackerGUIv2(QMainWindow):
         self.start_audio_calibration_btn = QPushButton("Start Audio Calibration")
         self.start_audio_calibration_btn.setMinimumHeight(30)
         self.start_audio_calibration_btn.clicked.connect(self.start_audio_calibration)
+        self.start_audio_calibration_btn.setStyleSheet(
+            "color: black;"
+        )
         calibration_buttons.addWidget(self.start_audio_calibration_btn)
         
         self.cancel_audio_calibration_btn = QPushButton("Cancel")
         self.cancel_audio_calibration_btn.setMinimumHeight(30)
         self.cancel_audio_calibration_btn.clicked.connect(self.cancel_audio_calibration)
         self.cancel_audio_calibration_btn.setEnabled(False)
+        self.cancel_audio_calibration_btn.setStyleSheet(
+            "color: black;"
+        )
         calibration_buttons.addWidget(self.cancel_audio_calibration_btn)
         
         calibration_controls_layout.addLayout(calibration_buttons)
