@@ -6,6 +6,7 @@ import traceback
 
 from audio_to_cursor.multi_engine_voice_control import MultiEngineVoiceControl
 from gui import main as gui_main
+from pynosetracker import NoseTracker
 
 # # Configure logging
 # logging.basicConfig(
@@ -43,8 +44,6 @@ def main():
     args = parser.parse_args()
     
     if args.headless:
-        from pynosetracker import NoseTracker
-
         print("Starting application in headless mode")
 
         # Create instances
