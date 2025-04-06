@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QHBoxLayout, QPushButton, QSlider, QLabel, QMessageBox,
                             QTextEdit, QSplitter, QTabWidget)
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QImage, QPixmap, QIcon, QColor, QTextCursor
+from PyQt6.QtGui import QImage, QPixmap, QIcon, QColor, QTextCursor, QFont
 from pynosetracker import NoseTracker
 
 class LogReader(threading.Thread):
@@ -47,10 +47,16 @@ class LogReader(threading.Thread):
 class NoseTrackerGUIv2(QMainWindow):
     def __init__(self, log_file="multi_voice_logs.txt", console_log_file=None):
         super().__init__()
-        self.setWindowTitle("Voxel v2")
-        self.setGeometry(100, 100, 1000, 700)
+        self.setWindowTitle("Voxel")
+        self.setGeometry(0, 0, 500, 500)
         self.log_file = log_file
         self.console_log_file = console_log_file
+        
+        # Create monospace font for logs
+        self.log_font = QFont("Courier New")  # Primary monospace font
+        if not self.log_font.exactMatch():  # If Courier New is not available
+            self.log_font = QFont("Monospace")  # Fallback option
+        self.log_font.setPointSize(12)
         
         # Set window icon
         try:
@@ -133,26 +139,29 @@ class NoseTrackerGUIv2(QMainWindow):
         
         # Create log tab widget
         self.log_tabs = QTabWidget()
+
+        # Console output logs
+        self.console_logs = QTextEdit()
+        self.console_logs.setReadOnly(True)
+        self.console_logs.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.console_logs.setPlaceholderText("Voice control console output will appear here...")
+        self.console_logs.setFont(self.log_font)
+        self.log_tabs.addTab(self.console_logs, "Console Output")
         
         # Voice command logs
         self.voice_logs = QTextEdit()
         self.voice_logs.setReadOnly(True)
         self.voice_logs.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.voice_logs.setPlaceholderText("Voice command logs will appear here...")
+        self.voice_logs.setFont(self.log_font)
         self.log_tabs.addTab(self.voice_logs, "Voice Commands")
-        
-        # Console output logs
-        self.console_logs = QTextEdit()
-        self.console_logs.setReadOnly(True)
-        self.console_logs.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        self.console_logs.setPlaceholderText("Voice control console output will appear here...")
-        self.log_tabs.addTab(self.console_logs, "Console Output")
         
         # System logs
         self.system_logs = QTextEdit()
         self.system_logs.setReadOnly(True)
         self.system_logs.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.system_logs.setPlaceholderText("System status will appear here...")
+        self.system_logs.setFont(self.log_font)
         self.log_tabs.addTab(self.system_logs, "System Status")
         
         bottom_layout.addWidget(self.log_tabs)
