@@ -395,7 +395,7 @@ class GeminiIntentMapper:
                     logger.info(f"Available Gemini model: {model.name}")
             
             # Try to use an appropriate model
-            self.model = genai.GenerativeModel('gemini-2.0-flash')
+            self.model = genai.GenerativeModel("gemini-1.5-flash-8b")
             logger.info("Successfully initialized Gemini model")
         except Exception as e:
             logger.error(f"Error setting up Gemini model: {e}")
