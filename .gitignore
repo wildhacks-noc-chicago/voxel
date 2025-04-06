@@ -2,6 +2,17 @@
 vosk-model-small-en-us-0.15
 vosk-model-small-en-us-0.15.zip
 multi_voice_logs.txt
+whisper_models/
+
+# Archives and compressed files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.gz
+vosk-model*/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -177,7 +188,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-
-# Zip files
-*.zip
-vosk-model*/
