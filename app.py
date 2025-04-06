@@ -39,42 +39,44 @@ def main():
     parser = argparse.ArgumentParser(description='Nose Tracking Mouse Control')
     parser.add_argument('--headless', action='store_true', help='Run in headless mode (no GUI)')
     parser.add_argument('--sensitivity', type=float, default=8.0, help='Default sensitivity (1-10)')
+    parser.add_argument('--use-old-calibration', action='store_true', help='Use existing calibration data if available')
     
     args = parser.parse_args()
     
-    print("Starting application in headless mode")
+    if args.headless:
+        print("Starting application in headless mode")
 
-    # Create instances
-    tracker = NoseTracker(headless=True, default_sensitivity=args.sensitivity)
-    voice_control = MultiEngineVoiceControl(move_distance=100)
-    
-    # Create threads with wrapper functions
-    tracker_thread = threading.Thread(target=run_tracker_safely, args=(tracker,), daemon=True, name="NoseTracker")
-    voice_thread = threading.Thread(target=run_voice_safely, args=(voice_control,), daemon=True, name="VoiceControl")
-    
-    # Start threads
-    print("Starting nose tracker thread")
-    tracker_thread.start()
-    print("Starting voice control thread")
-    voice_thread.start()
-    
-    # Keep main thread alive and monitor threads
-    try:
-        while True:
-            print(f"NoseTracker thread is {'alive' if tracker_thread.is_alive() else 'dead'}")
-            print(f"VoiceControl thread is {'alive' if voice_thread.is_alive() else 'dead'}")
-            
-            # Check if any thread died unexpectedly
-            if not tracker_thread.is_alive():
-                print("NoseTracker thread died unexpectedly")
-            
-            if not voice_thread.is_alive():
-                print("VoiceControl thread died unexpectedly")
-            
-            time.sleep(5)  # Check every 5 seconds
-    except KeyboardInterrupt:
-        print("Received keyboard interrupt, shutting down...")
-        print("\nShutting down. Press Ctrl+C again to force exit.")
+        # Create instances
+        tracker = NoseTracker(headless=True, default_sensitivity=args.sensitivity)
+        voice_control = MultiEngineVoiceControl(move_distance=100)
+        
+        # Create threads with wrapper functions
+        tracker_thread = threading.Thread(target=run_tracker_safely, args=(tracker,), daemon=True, name="NoseTracker")
+        voice_thread = threading.Thread(target=run_voice_safely, args=(voice_control,), daemon=True, name="VoiceControl")
+        
+        # Start threads
+        print("Starting nose tracker thread")
+        tracker_thread.start()
+        print("Starting voice control thread")
+        voice_thread.start()
+        
+        # Keep main thread alive and monitor threads
+        try:
+            while True:
+                print(f"NoseTracker thread is {'alive' if tracker_thread.is_alive() else 'dead'}")
+                print(f"VoiceControl thread is {'alive' if voice_thread.is_alive() else 'dead'}")
+                
+                # Check if any thread died unexpectedly
+                if not tracker_thread.is_alive():
+                    print("NoseTracker thread died unexpectedly")
+                
+                if not voice_thread.is_alive():
+                    print("VoiceControl thread died unexpectedly")
+                
+                time.sleep(5)  # Check every 5 seconds
+        except KeyboardInterrupt:
+            print("Received keyboard interrupt, shutting down...")
+            print("\nShutting down. Press Ctrl+C again to force exit.")
 
 
 if __name__ == '__main__':
