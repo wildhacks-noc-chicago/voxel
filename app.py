@@ -48,7 +48,7 @@ def main():
 
         # Create instances
         tracker = NoseTracker(headless=True, default_sensitivity=args.sensitivity)
-        voice_control = MultiEngineVoiceControl(move_distance=100, use_old_calibration=args.use_old_calibration)
+        voice_control = MultiEngineVoiceControl(move_distance=100)
         
         # Create threads with wrapper functions
         tracker_thread = threading.Thread(target=run_tracker_safely, args=(tracker,), daemon=True, name="NoseTracker")
@@ -77,9 +77,7 @@ def main():
         except KeyboardInterrupt:
             print("Received keyboard interrupt, shutting down...")
             print("\nShutting down. Press Ctrl+C again to force exit.")
-    else:
-        print("Starting application with GUI")
-        gui_main()
+
 
 if __name__ == '__main__':
     main()
