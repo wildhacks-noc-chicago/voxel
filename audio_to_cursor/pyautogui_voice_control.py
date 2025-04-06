@@ -169,6 +169,7 @@ class PyAutoGUIVoiceControl:
             "Mouse Actions": ["click", "left click", "right click"],
             "Keyboard": ["press enter", "press tab", "press escape", "press space"],
             "Scrolling": ["scroll up", "scroll down"],
+            "Browser": ["open browser", "start typing"],
             "System": ["exit", "quit", "stop listening"]
         }
         

@@ -94,3 +94,16 @@
   Sphinx: 'oh'
   Final interpretation: 'up'
 
+
+2025-04-05 23:12:53 | Multi-Engine Results:
+  Vosk: 'open the browser'
+  Google: 'open the browser'
+  Faster_whisper: 'open the browser'
+  Final interpretation: 'open browser'
+
+2025-04-05 23:13:04 | Multi-Engine Results:
+  Vosk: 'cecil ah and what is it time the start typing'
+  Google: 'start typing'
+  Faster_whisper: 'yeah, see, so, what is it?  start typing.'
+  Final interpretation: 'start typing'
+

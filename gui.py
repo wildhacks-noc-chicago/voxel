@@ -4,7 +4,7 @@ import pyautogui
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QPushButton, QSlider, QLabel, QMessageBox)
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QIcon
 from pynosetracker import NoseTracker
 
 class NoseTrackerGUI(QMainWindow):
@@ -12,6 +12,12 @@ class NoseTrackerGUI(QMainWindow):
         super().__init__()
         self.setWindowTitle("Voxel")
         self.setGeometry(100, 100, 800, 600)
+        
+        # Set window icon
+        try:
+            self.setWindowIcon(QIcon('assets/icon.png'))  # or 'icons/icon.png' depending on your directory structure
+        except:
+            pass  # Silently fail if icon file is not found
         
         # Initialize nose tracker
         self.tracker = NoseTracker(headless=False)
@@ -173,6 +179,16 @@ class NoseTrackerGUI(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    app.setApplicationName("Voxel")
+    app.setApplicationDisplayName("Voxel")
+    
+    # Set application icon
+    try:
+        icon = QIcon('assets/icon.png')
+        app.setWindowIcon(icon)
+    except:
+        pass
+    
     window = NoseTrackerGUI()
     window.show()
     sys.exit(app.exec()) 

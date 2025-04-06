@@ -8,12 +8,18 @@ import threading
 import time
 
 import google.generativeai as genai
+import numpy as np
 import speech_recognition as sr
 from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 from pynput.mouse import Button
 from pynput.mouse import Controller as MouseController
 
+from audio_to_cursor.calibration import (
+    CalibrationError,
+    CalibrationManager,
+    NoiseFilter,
+)
 from audio_to_cursor.pyautogui_command_executor import PyAutoGUICommandExecutor
 
 # Configure logging
@@ -49,6 +55,10 @@ class MultiEngineSpeechRecognition:
         self.recognizer = recognizer
         self.command_timeout = command_timeout
         self.results_queue = queue.Queue()
+
+        # Initialize calibration
+        self.calibration_manager = CalibrationManager()
+        self.noise_filter = NoiseFilter(self.calibration_manager)
         
         # Check which engines are available
         self.engines_available = {
@@ -270,10 +280,34 @@ class MultiEngineSpeechRecognition:
     def listen_and_recognize(self):
         """Listen for voice input and recognize using multiple engines"""
         with sr.Microphone() as source:
+            print("Listening...")
             self.recognizer.adjust_for_ambient_noise(source)
             try:
                 audio = self.recognizer.listen(source, timeout=self.command_timeout)
                 logger.info("Audio captured, processing with multiple engines...")
+
+                # Apply noise reduction if calibration exists
+                if self.noise_filter.noise_profile is not None:
+                    try:
+                        # Convert audio to numpy array
+                        audio_data = np.frombuffer(audio.get_raw_data(), dtype=np.int16)
+                        audio_data = audio_data.astype(np.float32) / 32768.0  # Convert to float32
+
+                        # Apply noise reduction
+                        filtered_audio = self.noise_filter.filter_audio(audio_data)
+
+                        # Convert back to audio data
+                        filtered_audio = (filtered_audio * 32768.0).astype(np.int16)
+                        audio = sr.AudioData(
+                            filtered_audio.tobytes(),
+                            sample_rate=self.calibration_manager.sample_rate,
+                            sample_width=2  # 16-bit audio
+                        )
+                        logger.info("Applied noise reduction to audio")
+                    except Exception as e:
+                        logger.error(f"Error applying noise reduction: {e}")
+                        # Continue with original audio if noise reduction fails
+
             except sr.WaitTimeoutError:
                 logger.info("No speech detected within timeout")
                 return None
@@ -496,7 +530,6 @@ class GeminiIntentMapper:
             
             # Mouse click commands
             "click": "click the mouse",
-            "enter": "click the mouse",
             "left click": "left click the mouse",
             "right click": "right click the mouse",
             
