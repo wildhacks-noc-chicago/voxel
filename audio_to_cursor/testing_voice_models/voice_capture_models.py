@@ -42,7 +42,8 @@ class MultiEngineRecognizer:
         self.engines_available = {
             "google": True,  # Google is always available through the API
             "sphinx": self._check_sphinx_available(),
-            "vosk": self._check_vosk_available()
+            "vosk": self._check_vosk_available(),
+            "faster_whisper": self._check_faster_whisper_available()
         }
         
         # Load Gemini for processing
@@ -57,7 +58,8 @@ class MultiEngineRecognizer:
             
         logger.info(f"Available engines: Google:{self.engines_available['google']}, "
                    f"Sphinx:{self.engines_available['sphinx']}, "
-                   f"Vosk:{self.engines_available['vosk']}")
+                   f"Vosk:{self.engines_available['vosk']}, "
+                   f"Faster Whisper:{self.engines_available['faster_whisper']}")
     
     def _check_sphinx_available(self):
         """Check if Sphinx is available"""
@@ -75,6 +77,15 @@ class MultiEngineRecognizer:
             return True
         except ImportError:
             logger.warning("Vosk not found. Vosk recognition will be skipped.")
+            return False
+    
+    def _check_faster_whisper_available(self):
+        """Check if Faster Whisper is available"""
+        try:
+            from faster_whisper import WhisperModel
+            return True
+        except ImportError:
+            logger.warning("Faster Whisper not found. Faster Whisper recognition will be skipped.")
             return False
     
     def _setup_gemini(self):
@@ -257,6 +268,68 @@ class MultiEngineRecognizer:
                 "time": 0
             })
     
+    def recognize_with_faster_whisper(self, audio):
+        """Recognize speech using Faster Whisper"""
+        if not self.engines_available["faster_whisper"]:
+            self.results_queue.put({
+                "engine": "faster_whisper",
+                "text": None,
+                "time": 0
+            })
+            return
+            
+        try:
+            import tempfile
+            from faster_whisper import WhisperModel
+            
+            # Save audio to a temporary WAV file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                temp_filename = f.name
+                
+            with open(temp_filename, "wb") as f:
+                f.write(audio.get_wav_data())
+                
+            # Initialize Faster Whisper model if not already loaded
+            start_time = time.time()
+            
+            if not hasattr(self, 'whisper_model'):
+                # Use "small" model by default for a good balance of speed and accuracy
+                # Can be "tiny", "base", "small", "medium", "large-v1", "large-v2", or "large-v3"
+                model_size = "small"
+                logger.info(f"Loading Faster Whisper model ({model_size})...")
+                
+                # Use CPU with 4 threads by default
+                # For GPU, set compute_type="float16" and device="cuda"
+                self.whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8", 
+                                              cpu_threads=4, download_root="./whisper_models")
+            
+            # Transcribe audio
+            segments, info = self.whisper_model.transcribe(temp_filename, beam_size=5)
+            
+            # Combine all segments
+            text = " ".join([segment.text for segment in segments]).strip().lower()
+            
+            end_time = time.time()
+            processing_time = end_time - start_time
+            
+            # Clean up temporary file
+            os.unlink(temp_filename)
+            
+            logger.info(f"Faster Whisper recognized: '{text}' in {processing_time:.2f} seconds")
+            
+            self.results_queue.put({
+                "engine": "faster_whisper",
+                "text": text,
+                "time": processing_time
+            })
+        except Exception as e:
+            logger.error(f"Faster Whisper error: {e}")
+            self.results_queue.put({
+                "engine": "faster_whisper",
+                "text": None,
+                "time": 0
+            })
+    
     def process_with_gemini(self, results):
         """Use Gemini to select the best recognition from multiple engines"""
         if not self.gemini_available or not results:
@@ -322,7 +395,12 @@ class MultiEngineRecognizer:
         if len(valid_results) == 1:
             return valid_results[0]["text"]
             
-        # Return the Google result as default if available
+        # Prioritize Faster Whisper if available
+        for r in valid_results:
+            if r["engine"] == "faster_whisper":
+                return r["text"]
+                
+        # Then Google as backup
         for r in valid_results:
             if r["engine"] == "google":
                 return r["text"]
@@ -362,6 +440,11 @@ class MultiEngineRecognizer:
         if self.engines_available["vosk"]:
             t_vosk = threading.Thread(target=self.recognize_with_vosk, args=(audio,))
             threads.append(t_vosk)
+            
+        # Use Faster Whisper if available
+        if self.engines_available["faster_whisper"]:
+            t_whisper = threading.Thread(target=self.recognize_with_faster_whisper, args=(audio,))
+            threads.append(t_whisper)
         
         # Start all threads
         for t in threads:
@@ -403,6 +486,8 @@ class MultiEngineRecognizer:
             print("- CMU Sphinx (offline)")
         if self.engines_available["vosk"]:
             print("- Vosk (offline)")
+        if self.engines_available["faster_whisper"]:
+            print("- Faster Whisper (offline)")
             
         if self.gemini_available:
             print("\nGemini AI is available and will select the best recognition.")
