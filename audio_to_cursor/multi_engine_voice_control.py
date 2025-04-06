@@ -4,8 +4,10 @@ import logging
 import os
 import queue
 import sys
+import tempfile
 import threading
 import time
+from typing import Dict, List, Optional
 
 import google.generativeai as genai
 import numpy as np
@@ -329,6 +331,22 @@ class MultiEngineSpeechRecognition:
             try:
                 logger.debug("Waiting for audio input")
                 audio = self.recognizer.listen(source, timeout=self.command_timeout)
+                
+                # NEW: Quickly check if audio is empty or just background noise
+                audio_data = np.frombuffer(audio.get_raw_data(), dtype=np.int16)
+                
+                # If audio is very short or very quiet, skip further processing
+                audio_duration = len(audio_data) / audio.sample_rate
+                audio_amplitude = np.abs(audio_data).mean()
+                
+                logger.debug(f"Audio duration: {audio_duration:.2f}s, amplitude: {audio_amplitude:.2f}")
+                
+                # Exit early if the audio is too short or too quiet
+                if audio_duration < 0.3 or audio_amplitude < 50:
+                    logger.info(f"Empty or silent audio detected (duration: {audio_duration:.2f}s, amplitude: {audio_amplitude:.2f}), skipping recognition")
+                    print("No speech detected, listening again...")
+                    return None
+                    
                 logger.info("Audio captured, processing with multiple engines...")
 
                 # # Apply noise reduction if calibration exists
@@ -400,6 +418,45 @@ class MultiEngineSpeechRecognition:
         logger.info(f"Collected {len(results)} recognition results")
         return results
 
+    def initialize_whisper(self):
+        """Initialize Faster Whisper model if available"""
+        try:
+            # Check if speech_module has already initialized Whisper
+            if hasattr(self, 'whisper_model') and self.whisper_model is not None:
+                logger.info("Whisper model already initialized")
+                return True
+                
+            # Check if Faster Whisper is available
+            if not self.engines_available.get("faster_whisper", False):
+                logger.info("Faster Whisper is not available, skipping initialization")
+                return False
+                
+            # Initialize Whisper model
+            logger.info("Initializing Faster Whisper model")
+            from faster_whisper import WhisperModel
+
+            # Use small model by default (good balance of speed and accuracy)
+            model_size = "small"
+            logger.info(f"Loading Faster Whisper model ({model_size})...")
+            
+            # Initialize the model with CPU settings
+            self.whisper_model = WhisperModel(
+                model_size, 
+                device="cpu", 
+                compute_type="int8", 
+                cpu_threads=4, 
+                download_root="./whisper_models"
+            )
+            
+            logger.info("Faster Whisper model initialized successfully")
+            return True
+        except ImportError:
+            logger.warning("Faster Whisper not available - will use other engines")
+            return False
+        except Exception as e:
+            logger.error(f"Error initializing Faster Whisper model: {e}")
+            print(f"Warning: Failed to initialize Whisper model: {e}")
+            return False
 
 class GeminiIntentMapper:
     """Maps user speech to commands using Gemini AI with multiple recognition inputs"""
@@ -985,9 +1042,143 @@ class MultiEngineVoiceControl:
         except Exception as e:
             logger.error(f"Error logging command to file: {e}")
     
+    def _is_audio_empty(self, audio):
+        """Check if audio is empty or contains only background noise"""
+        try:
+            # Get the raw audio data
+            audio_data = np.frombuffer(audio.get_raw_data(), dtype=np.int16)
+            
+            # Calculate audio duration and amplitude
+            audio_duration = len(audio_data) / audio.sample_rate if hasattr(audio, 'sample_rate') else 0.0
+            audio_amplitude = np.abs(audio_data).mean()
+            
+            logger.debug(f"Audio check - Duration: {audio_duration:.2f}s, Amplitude: {audio_amplitude:.2f}")
+            
+            # Return true if audio is too short or too quiet
+            if audio_duration < 0.3 or audio_amplitude < 50:
+                logger.info(f"Empty audio detected (duration: {audio_duration:.2f}s, amplitude: {audio_amplitude:.2f})")
+                return True
+                
+            return False
+        except Exception as e:
+            logger.error(f"Error checking if audio is empty: {e}")
+            return False  # Assume not empty on error
+            
+    def _process_typing_input(self):
+        """Process audio input while in typing mode, with early exit for empty audio"""
+        # Use only speech recognition for typing mode
+        with sr.Microphone() as source:
+            logger.info("Listening for text in typing mode...")
+            print("Listening for text to type...")
+            
+            recognizer = sr.Recognizer()
+            recognizer.adjust_for_ambient_noise(source)
+            
+            try:
+                # Listen for speech with timeout
+                audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                
+                # Check if audio is empty before processing (early exit)
+                if self._is_audio_empty(audio):
+                    logger.info("Empty audio detected in typing mode, skipping processing")
+                    print("No speech detected, listening again...")
+                    return None, True
+                
+                logger.info("Audio captured in typing mode")
+                
+                # Process with Faster Whisper if available (more accurate for typing)
+                if self.speech_module.engines_available["faster_whisper"]:
+                    try:
+                        # Initialize whisper model if needed
+                        if (not hasattr(self.speech_module, 'whisper_model') 
+                                or self.speech_module.whisper_model is None):
+                            # Initialize Whisper
+                            try:
+                                # Initialize directly with same parameters
+                                from faster_whisper import WhisperModel
+                                model_size = "small"
+                                logger.info(f"Initializing Whisper model for typing mode ({model_size})...")
+                                self.speech_module.whisper_model = WhisperModel(
+                                    model_size, 
+                                    device="cpu", 
+                                    compute_type="int8", 
+                                    cpu_threads=4, 
+                                    download_root="./whisper_models"
+                                )
+                                logger.info("Whisper model initialized for typing mode")
+                            except Exception as e:
+                                logger.error(f"Error initializing Whisper model for typing mode: {e}")
+                                print(f"Error initializing speech recognition: {e}")
+                                return None, True
+                        
+                        # Process with Whisper directly, saving to a temp file
+                        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                            temp_filename = f.name
+                            
+                        with open(temp_filename, "wb") as f:
+                            f.write(audio.get_wav_data())
+                        
+                        # Use Whisper for transcription
+                        segments, info = self.speech_module.whisper_model.transcribe(temp_filename, beam_size=1)
+                        text = " ".join([segment.text for segment in segments]).strip()
+                        
+                        # Clean up the temp file immediately
+                        os.unlink(temp_filename)
+                        
+                        # Check for stop commands
+                        if text.lower() in ["stop typing", "stop", "exit typing", "exit typing mode"]:
+                            logger.info(f"Stop typing command detected in typing mode: '{text}'")
+                            return "stop typing", True
+                        
+                        # Return the text for typing
+                        if text:
+                            logger.info(f"Typing mode text recognized: '{text}'")
+                            print(f"Typing: '{text}'")
+                            return text, True
+                        else:
+                            logger.info("No text recognized in typing mode")
+                            return None, True
+                    except Exception as e:
+                        logger.error(f"Error using Faster Whisper in typing mode: {e}")
+                
+                # Fall back to Google if Whisper fails or isn't available
+                try:
+                    text = recognizer.recognize_google(audio).lower()
+                    
+                    # Check for stop commands
+                    if text.lower() in ["stop typing", "stop", "exit typing", "exit typing mode"]:
+                        logger.info(f"Stop typing command detected (Google fallback): '{text}'")
+                        return "stop typing", True
+                    
+                    # Return the text for typing
+                    if text:
+                        logger.info(f"Typing mode text recognized (Google fallback): '{text}'")
+                        print(f"Typing: '{text}'")
+                        return text, True
+                except Exception as e:
+                    logger.error(f"Error with Google recognition in typing mode: {e}")
+                    return None, True
+            except sr.WaitTimeoutError:
+                logger.info("No speech detected in typing mode")
+                return None, True
+                
+        return None, True
+    
     def process_voice_command(self):
-        """Process a voice command through the entire pipeline using multiple engines"""
-        # STEP 1: Multi-engine speech recognition
+        """Process a voice command using the appropriate recognition method"""
+        # Check if we're in typing mode first
+        if hasattr(self.pyautogui_executor, 'is_typing_mode_active'):
+            from audio_to_cursor.pyautogui_command_executor import is_typing_mode_active
+            typing_mode = is_typing_mode_active()
+        else:
+            typing_mode = os.path.exists("typing_mode.flag")
+            
+        # If in typing mode, use a simplified recognition approach
+        if typing_mode:
+            logger.info("In typing mode, using optimized recognition process")
+            return self._process_typing_input()
+        
+        # Not in typing mode - use the full multi-engine pipeline
         logger.info("Starting voice command processing")
         recognition_results = self.speech_module.listen_and_recognize()
         if not recognition_results:
@@ -1124,6 +1315,45 @@ class MultiEngineVoiceControl:
             
         logger.info("Multi-engine voice control system stopped")
 
+    def initialize_whisper(self):
+        """Initialize Faster Whisper model if available"""
+        try:
+            # Check if speech_module has already initialized Whisper
+            if hasattr(self.speech_module, 'whisper_model') and self.speech_module.whisper_model is not None:
+                logger.info("Whisper model already initialized")
+                return True
+                
+            # Check if Faster Whisper is available
+            if not self.speech_module.engines_available.get("faster_whisper", False):
+                logger.info("Faster Whisper is not available, skipping initialization")
+                return False
+                
+            # Initialize Whisper model
+            logger.info("Initializing Faster Whisper model")
+            from faster_whisper import WhisperModel
+
+            # Use small model by default (good balance of speed and accuracy)
+            model_size = "small"
+            logger.info(f"Loading Faster Whisper model ({model_size})...")
+            
+            # Initialize the model with CPU settings
+            self.speech_module.whisper_model = WhisperModel(
+                model_size, 
+                device="cpu", 
+                compute_type="int8", 
+                cpu_threads=4, 
+                download_root="./whisper_models"
+            )
+            
+            logger.info("Faster Whisper model initialized successfully")
+            return True
+        except ImportError:
+            logger.warning("Faster Whisper not available - will use other engines")
+            return False
+        except Exception as e:
+            logger.error(f"Error initializing Faster Whisper model: {e}")
+            print(f"Warning: Failed to initialize Whisper model: {e}")
+            return False
 
 if __name__ == "__main__":
     try:

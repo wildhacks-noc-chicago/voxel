@@ -29,6 +29,14 @@ python3 -c "import librosa" 2>/dev/null || {
     pip install librosa
 }
 
+# Run the semaphore cleanup script before starting to ensure clean state
+echo "Running semaphore cleanup before startup..."
+if [ -f "./cleanup_semaphores.py" ]; then
+    python3 ./cleanup_semaphores.py
+else
+    echo "Warning: semaphore cleanup script not found. Continuing without cleanup."
+fi
+
 # Create log files
 CONSOLE_LOG="voice_control_console.log"
 VOICE_LOG="multi_voice_logs.txt"
@@ -118,68 +126,12 @@ for flag in "${FLAG_FILES[@]}"; do
     fi
 done
 
-# Run a special Python cleanup script for semaphore leaks
-echo "Cleaning up multiprocessing resources..."
-# Create a temporary Python script to cleanup semaphores
-cat > cleanup_semaphores.py << 'EOF'
-import os
-import sys
-import multiprocessing
-import signal
-import gc
-
-# Force collect all garbage objects to clean up references
-print("Forcing garbage collection...")
-gc.collect()
-
-# Try to clear multiprocessing resources
-print("Clearing multiprocessing resource tracker...")
-try:
-    multiprocessing.resource_tracker._resource_tracker.clear()
-    print("Successfully cleared resource tracker")
-except Exception as e:
-    print(f"Error clearing resource tracker: {e}")
-
-# On macOS, sometimes need to reset shared memory
-if sys.platform == 'darwin':
-    try:
-        print("Cleaning up shared memory files on macOS...")
-        # Find and remove any semaphore files left by this user
-        semaphore_dir = "/dev/shm"
-        if os.path.exists(semaphore_dir):
-            uid = os.getuid()
-            for filename in os.listdir(semaphore_dir):
-                if f"sem.{uid}_" in filename:
-                    try:
-                        os.unlink(os.path.join(semaphore_dir, filename))
-                        print(f"Removed semaphore: {filename}")
-                    except:
-                        pass
-        
-        # Alternate location on macOS
-        try:
-            import tempfile
-            temp_dir = tempfile.gettempdir()
-            print(f"Checking temp directory: {temp_dir}")
-            for filename in os.listdir(temp_dir):
-                if filename.startswith("pymp-") and filename.endswith(".lock"):
-                    try:
-                        os.unlink(os.path.join(temp_dir, filename))
-                        print(f"Removed lock file: {filename}")
-                    except:
-                        pass
-        except Exception as e:
-            print(f"Error cleaning up temp files: {e}")
-    except Exception as e:
-        print(f"Error during macOS cleanup: {e}")
-
-print("Multiprocessing cleanup completed")
-EOF
-
-# Run the cleanup script
-python3 cleanup_semaphores.py
-
-# Remove the temporary script
-rm -f cleanup_semaphores.py
+# Run final semaphore cleanup
+echo "Running final semaphore cleanup..."
+if [ -f "./cleanup_semaphores.py" ]; then
+    python3 ./cleanup_semaphores.py
+else
+    echo "Warning: semaphore cleanup script not found. Continuing without cleanup."
+fi
 
 echo "Voxel system has been shut down and cleaned up."

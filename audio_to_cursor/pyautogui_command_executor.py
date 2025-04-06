@@ -2,6 +2,7 @@ import atexit
 import logging
 import multiprocessing
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -587,7 +588,6 @@ class PyAutoGUICommandExecutor:
                     if any(text_lower.startswith(phrase) for phrase in stop_phrases):
                         logger.info(f"Stop typing command detected: '{text}'")
                         print("🛑 Exiting typing mode")
-                        self.stop_typing_event.set()
                         break
                     
                     logger.info(f"Typing: '{text}'")
@@ -612,6 +612,9 @@ class PyAutoGUICommandExecutor:
                     logger.error(f"Unexpected error in typing mode: {e}")
                     print(f"Error: {e}")
         finally:
+            # Set event to ensure we exit the loop
+            self.stop_typing_event.set()
+            
             # Clean up temp files
             for temp_file in temp_files:
                 try:
@@ -621,11 +624,20 @@ class PyAutoGUICommandExecutor:
                 except Exception as e:
                     logger.error(f"Error cleaning up temp file {temp_file}: {e}")
             
+            # Free microphone resources
+            try:
+                del mic
+            except:
+                pass
+                
             # Clean up speech recognizer
-            if self.recognizer:
-                # Explicitly delete the recognizer to free resources
-                del self.recognizer
-                self.recognizer = None
+            try:
+                if self.recognizer:
+                    # Explicitly delete the recognizer to free resources
+                    del self.recognizer
+                    self.recognizer = None
+            except:
+                pass
                 
             # Process the text with AI if enabled before exiting
             if is_ai_editor_active() and self.current_typing_buffer.strip():
@@ -651,11 +663,30 @@ class PyAutoGUICommandExecutor:
                 
             # Reset typing mode flag using helper function
             set_typing_mode(False)
+            
+            # Force multiprocessing cleanup
+            try:
+                # Force garbage collection
+                import gc
+                gc.collect()
+                
+                # Try to directly clear the resource tracker
+                multiprocessing.resource_tracker._resource_tracker.clear()
+                logger.info("Cleared multiprocessing resource tracker after typing mode")
+            except Exception as e:
+                logger.error(f"Error clearing multiprocessing resources: {e}")
+            
+            # Run the external cleanup script if available
+            try:
+                if os.path.exists("./cleanup_semaphores.py"):
+                    logger.info("Running semaphore cleanup script from typing thread")
+                    subprocess.run(["python3", "./cleanup_semaphores.py"], 
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                logger.error(f"Failed to run semaphore cleanup script from thread: {e}")
+            
             logger.info("Typing mode thread ended")
             print("Typing mode deactivated")
-            
-            # Force multiprocessing resource cleanup
-            cleanup_multiprocessing_resources()
             
             # Play sound when typing mode exits 
             play_sound_effect()
@@ -678,6 +709,15 @@ class PyAutoGUICommandExecutor:
         self.typing_thread.daemon = True
         self.typing_thread.start()
         
+        # Run semaphore cleanup script to prevent leaks
+        try:
+            if os.path.exists("./cleanup_semaphores.py"):
+                logger.info("Running semaphore cleanup script after starting typing mode")
+                subprocess.run(["python3", "./cleanup_semaphores.py"], 
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            logger.error(f"Failed to run semaphore cleanup script: {e}")
+        
         # Note: We don't play sound here because _typing_thread_function will play it
         return True
     
@@ -699,6 +739,15 @@ class PyAutoGUICommandExecutor:
             
             # Reset flag using helper function
             set_typing_mode(False)
+            
+            # Run semaphore cleanup script to prevent leaks
+            try:
+                if os.path.exists("./cleanup_semaphores.py"):
+                    logger.info("Running semaphore cleanup script after stopping typing mode")
+                    subprocess.run(["python3", "./cleanup_semaphores.py"], 
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                logger.error(f"Failed to run semaphore cleanup script: {e}")
             
             logger.info("Typing mode stopped")
             play_sound_effect()  # Play sound for successful command
