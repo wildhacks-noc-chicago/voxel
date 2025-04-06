@@ -53,22 +53,13 @@ class MultiEngineSpeechRecognition:
         # Check which engines are available
         self.engines_available = {
             "google": True,  # Google is always available through the API
-            "sphinx": self._check_sphinx_available(),
-            "vosk": self._check_vosk_available()
+            "vosk": self._check_vosk_available(),
+            "faster_whisper": self._check_faster_whisper_available()
         }
         
         logger.info(f"Available engines: Google:{self.engines_available['google']}, "
-                   f"Sphinx:{self.engines_available['sphinx']}, "
-                   f"Vosk:{self.engines_available['vosk']}")
-    
-    def _check_sphinx_available(self):
-        """Check if Sphinx is available"""
-        try:
-            import pocketsphinx
-            return True
-        except ImportError:
-            logger.warning("PocketSphinx not found. Sphinx recognition will be skipped.")
-            return False
+                   f"Vosk:{self.engines_available['vosk']}, "
+                   f"Faster Whisper:{self.engines_available['faster_whisper']}")
     
     def _check_vosk_available(self):
         """Check if Vosk is available"""
@@ -77,6 +68,15 @@ class MultiEngineSpeechRecognition:
             return True
         except ImportError:
             logger.warning("Vosk not found. Vosk recognition will be skipped.")
+            return False
+    
+    def _check_faster_whisper_available(self):
+        """Check if Faster Whisper is available"""
+        try:
+            from faster_whisper import WhisperModel
+            return True
+        except ImportError:
+            logger.warning("Faster Whisper not found. Faster Whisper recognition will be skipped.")
             return False
     
     def recognize_with_google(self, audio):
@@ -105,44 +105,6 @@ class MultiEngineSpeechRecognition:
             logger.error(f"Google request error: {e}")
             self.results_queue.put({
                 "engine": "google",
-                "text": None,
-                "time": 0
-            })
-    
-    def recognize_with_sphinx(self, audio):
-        """Recognize speech using CMU Sphinx"""
-        if not self.engines_available["sphinx"]:
-            self.results_queue.put({
-                "engine": "sphinx",
-                "text": None,
-                "time": 0
-            })
-            return
-            
-        try:
-            start_time = time.time()
-            text = self.recognizer.recognize_sphinx(audio).lower()
-            end_time = time.time()
-            processing_time = end_time - start_time
-            
-            logger.info(f"Sphinx recognized: '{text}' in {processing_time:.2f} seconds")
-            
-            self.results_queue.put({
-                "engine": "sphinx",
-                "text": text,
-                "time": processing_time
-            })
-        except sr.UnknownValueError:
-            logger.warning("Sphinx could not understand audio")
-            self.results_queue.put({
-                "engine": "sphinx",
-                "text": None,
-                "time": 0
-            })
-        except sr.RequestError as e:
-            logger.error(f"Sphinx error: {e}")
-            self.results_queue.put({
-                "engine": "sphinx",
                 "text": None,
                 "time": 0
             })
@@ -242,6 +204,69 @@ class MultiEngineSpeechRecognition:
                 "time": 0
             })
     
+    def recognize_with_faster_whisper(self, audio):
+        """Recognize speech using Faster Whisper"""
+        if not self.engines_available["faster_whisper"]:
+            self.results_queue.put({
+                "engine": "faster_whisper",
+                "text": None,
+                "time": 0
+            })
+            return
+            
+        try:
+            import tempfile
+
+            from faster_whisper import WhisperModel
+
+            # Save audio to a temporary WAV file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                temp_filename = f.name
+                
+            with open(temp_filename, "wb") as f:
+                f.write(audio.get_wav_data())
+                
+            # Initialize Faster Whisper model if not already loaded
+            start_time = time.time()
+            
+            if not hasattr(self, 'whisper_model'):
+                # Use "small" model by default for a good balance of speed and accuracy
+                # Can be "tiny", "base", "small", "medium", "large-v1", "large-v2", or "large-v3"
+                model_size = "small"
+                logger.info(f"Loading Faster Whisper model ({model_size})...")
+                
+                # Use CPU with 4 threads by default
+                # For GPU, set compute_type="float16" and device="cuda"
+                self.whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8", 
+                                              cpu_threads=4, download_root="./whisper_models")
+            
+            # Transcribe audio
+            segments, info = self.whisper_model.transcribe(temp_filename, beam_size=5)
+            
+            # Combine all segments
+            text = " ".join([segment.text for segment in segments]).strip().lower()
+            
+            end_time = time.time()
+            processing_time = end_time - start_time
+            
+            # Clean up temporary file
+            os.unlink(temp_filename)
+            
+            logger.info(f"Faster Whisper recognized: '{text}' in {processing_time:.2f} seconds")
+            
+            self.results_queue.put({
+                "engine": "faster_whisper",
+                "text": text,
+                "time": processing_time
+            })
+        except Exception as e:
+            logger.error(f"Faster Whisper error: {e}")
+            self.results_queue.put({
+                "engine": "faster_whisper",
+                "text": None,
+                "time": 0
+            })
+    
     def listen_and_recognize(self):
         """Listen for voice input and recognize using multiple engines"""
         with sr.Microphone() as source:
@@ -264,15 +289,15 @@ class MultiEngineSpeechRecognition:
         t_google = threading.Thread(target=self.recognize_with_google, args=(audio,))
         threads.append(t_google)
         
-        # Use Sphinx if available
-        if self.engines_available["sphinx"]:
-            t_sphinx = threading.Thread(target=self.recognize_with_sphinx, args=(audio,))
-            threads.append(t_sphinx)
-        
         # Use Vosk if available
         if self.engines_available["vosk"]:
             t_vosk = threading.Thread(target=self.recognize_with_vosk, args=(audio,))
             threads.append(t_vosk)
+            
+        # Use Faster Whisper if available
+        if self.engines_available["faster_whisper"]:
+            t_whisper = threading.Thread(target=self.recognize_with_faster_whisper, args=(audio,))
+            threads.append(t_whisper)
         
         # Start all threads
         for t in threads:
@@ -326,7 +351,7 @@ class GeminiIntentMapper:
                     logger.info(f"Available Gemini model: {model.name}")
             
             # Try to use an appropriate model
-            self.model = genai.GenerativeModel("gemini-1.5-flash-8b")
+            self.model = genai.GenerativeModel('gemini-2.0-flash')
             logger.info("Successfully initialized Gemini model")
         except Exception as e:
             logger.error(f"Error setting up Gemini model: {e}")
@@ -378,8 +403,18 @@ class GeminiIntentMapper:
             1. If the recognition EXACTLY matches a command from the available commands list, use that command.
             2. If the recognition is within 1-2 characters of a command (like "clik" vs "click"), use the command.
             3. Only if no match is found, look for semantic matches or substrings.
-            
-            IMPORTANT: Return ONLY the exact command string from the available commands list. Return "NO_MATCH" if no match can be made.
+            4. Give more priority to commands with lower processing time and clearer recognition (i.e., simpler phrases, high confidence if available).
+            5. Match command based on majority of recognition engines. for example, if 2 out of 3 engines recognize "click", then return "click".
+        
+            Examples:
+            - If engines recognized: ["clip", "click", null] → return "click" (exact match to available command)
+            - If engines recognized: ["write", "right", "rite"] → return "right" (exact match to available command)
+            - If engines recognized: ["moved own", "move down", null] → return "down" (semantic match to command)
+            - If engines recognized: ["click", "click", "clique"] → return "click" (majority of engines recognized "click")
+
+
+            IMPORTANT: If multiple engines recognized valid commands, prioritize the exact matches in the available commands list.
+            Return ONLY the exact command string from the available commands list. Return "NO_MATCH" if no match can be made.
             
             Command:
             """
@@ -469,6 +504,11 @@ class GeminiIntentMapper:
             "exit": "exit the program",
             "quit": "quit the program",
             "stop listening": "stop the program",
+
+            # Browser commands
+            "open browser": "open the browser",
+            "start typing": "start typing in the browser",
+            "stop typing": "stop typing in the browser",
             
             # Website shortcuts
             **{f"go to {site}": f"Navigate to the {site} website" for site in self.shortcuts.keys()}
@@ -648,10 +688,10 @@ class MultiEngineVoiceControl:
         
         # Show which engines are available
         print("- Google (online)")
-        if self.speech_module.engines_available["sphinx"]:
-            print("- CMU Sphinx (offline)")
         if self.speech_module.engines_available["vosk"]:
             print("- Vosk (offline)")
+        if self.speech_module.engines_available["faster_whisper"]:
+            print("- Faster Whisper (offline)")
             
         print("\nEach engine's output is processed individually with Gemini AI.")
         print("If a command is found from one engine, we stop processing and execute it immediately.")
