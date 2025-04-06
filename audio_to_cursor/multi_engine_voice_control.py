@@ -476,6 +476,11 @@ class GeminiIntentMapper:
             "exit": "exit the program",
             "quit": "quit the program",
             "stop listening": "stop the program",
+
+            # Browser commands
+            "open browser": "open the browser",
+            "start typing": "start typing in the browser",
+            "stop typing": "stop typing in the browser",
             
             # Website shortcuts
             **{f"go to {site}": f"Navigate to the {site} website" for site in self.shortcuts.keys()}
