@@ -10,7 +10,6 @@ import time
 import google.generativeai as genai
 import numpy as np
 import speech_recognition as sr
-import vosk
 from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 from pynput.mouse import Button
@@ -21,12 +20,14 @@ from pynput.mouse import Controller as MouseController
 #     CalibrationManager,
 #     NoiseFilter,
 # )
-from audio_to_cursor.pyautogui_command_executor import (
-    MOUSE_LOCKED_STATE,
-    PyAutoGUICommandExecutor,
-)
+from audio_to_cursor.pyautogui_command_executor import PyAutoGUICommandExecutor
 
-# Don't configure logging here - we'll do it in the class
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='multi_engine_voice_control.log'
+)
 logger = logging.getLogger("MultiEngineVoiceControl")
 
 # Try to import PyAutoGUI command executor
@@ -58,8 +59,6 @@ class MultiEngineSpeechRecognition:
         self.results_queue = queue.Queue()
         # self.use_old_calibration = use_old_calibration
 
-        logger.info("Initializing speech recognition with timeout: %s seconds", self.command_timeout)
-        
         # Initialize calibration
         # self.calibration_manager = CalibrationManager()
         # self.noise_filter = NoiseFilter(self.calibration_manager)
@@ -115,6 +114,7 @@ class MultiEngineSpeechRecognition:
     def _check_vosk_available(self):
         """Check if Vosk is available"""
         try:
+            import vosk
             return True
         except ImportError:
             logger.warning("Vosk not found. Vosk recognition will be skipped.")
@@ -132,7 +132,6 @@ class MultiEngineSpeechRecognition:
     def recognize_with_google(self, audio):
         """Recognize speech using Google Speech Recognition"""
         try:
-            logger.debug("Starting Google speech recognition")
             start_time = time.time()
             text = self.recognizer.recognize_google(audio).lower()
             end_time = time.time()
@@ -320,14 +319,10 @@ class MultiEngineSpeechRecognition:
     
     def listen_and_recognize(self):
         """Listen for voice input and recognize using multiple engines"""
-        logger.info("Listening for voice command...")
-        
         with sr.Microphone() as source:
             print("Listening...")
-            logger.debug("Adjusting for ambient noise")
             self.recognizer.adjust_for_ambient_noise(source)
             try:
-                logger.debug("Waiting for audio input")
                 audio = self.recognizer.listen(source, timeout=self.command_timeout)
                 logger.info("Audio captured, processing with multiple engines...")
 
@@ -363,28 +358,22 @@ class MultiEngineSpeechRecognition:
         
         # Start recognition threads for each engine
         threads = []
-        engines_used = []
         
         # Always use Google
-        logger.debug("Starting Google recognition thread")
         t_google = threading.Thread(target=self.recognize_with_google, args=(audio,))
         threads.append(t_google)
-        engines_used.append("Google")
         
         # Use Vosk if available
         if self.engines_available["vosk"]:
             t_vosk = threading.Thread(target=self.recognize_with_vosk, args=(audio,))
             threads.append(t_vosk)
-            engines_used.append("Vosk")
             
         # Use Faster Whisper if available
         if self.engines_available["faster_whisper"]:
             t_whisper = threading.Thread(target=self.recognize_with_faster_whisper, args=(audio,))
             threads.append(t_whisper)
-            engines_used.append("Faster Whisper")
         
         # Start all threads
-        logger.debug(f"Starting {len(threads)} recognition threads: {', '.join(engines_used)}")
         for t in threads:
             t.start()
         
@@ -397,7 +386,6 @@ class MultiEngineSpeechRecognition:
         while not self.results_queue.empty():
             results.append(self.results_queue.get())
         
-        logger.info(f"Collected {len(results)} recognition results")
         return results
 
 
@@ -408,49 +396,6 @@ class GeminiIntentMapper:
         self.api_key = api_key
         self.available_commands = available_commands
         self.shortcuts = shortcuts or {}
-        
-        logger.info(f"Initializing GeminiIntentMapper with {len(available_commands)} available commands")
-        logger.debug(f"Available commands: {', '.join(available_commands)}")
-        
-        # Command aliases - multiple ways to say the same command
-        self.command_aliases = {
-            # Movement commands
-            "right": ["move right", "go right", "cursor right", "shift right"],
-            "left": ["move left", "go left", "cursor left", "shift left"],
-            "up": ["move up", "go up", "cursor up", "shift up"],
-            "down": ["move down", "go down", "cursor down", "shift down"],
-            
-            # Click commands
-            "click": ["mouse click", "press click", "do click", "quick click"],
-            "left click": ["mouse click", "press click", "left mouse click"],
-            "right click": ["right mouse click", "context click", "secondary click"],
-            
-            # Lock commands
-            "lock": ["lock mouse", "freeze mouse", "stop mouse", "lock cursor", "freeze cursor"],
-            "unlock": ["unlock mouse", "unfreeze mouse", "free mouse", "unlock cursor", "unfreeze cursor"],
-            
-            # Typing commands
-            "start typing": ["begin typing", "type mode", "typing mode", "dictate text", "dictation mode"],
-            "stop typing": ["end typing", "exit typing", "stop dictation", "end dictation", "finish typing"],
-            
-            # AI editor commands
-            "enable AI": ["turn on AI", "activate AI", "AI on", "AI editor on", "enable AI editor", "start AI editor"],
-            "disable AI": ["turn off AI", "deactivate AI", "AI off", "AI editor off", "disable AI editor", "stop AI editor"],
-            
-            # Browser commands
-            "open browser": ["launch browser", "start browser", "open web", "launch internet", "web browser"],
-            
-            # System commands
-            "exit": ["close program", "exit program", "quit program", "terminate"],
-            "quit": ["exit", "close program", "stop program"]
-        }
-        
-        # Create reverse alias mapping for lookup
-        self.reverse_aliases = {}
-        for cmd, aliases in self.command_aliases.items():
-            self.reverse_aliases[cmd] = cmd  # Command maps to itself
-            for alias in aliases:
-                self.reverse_aliases[alias] = cmd
         
         # Add website shortcuts to available commands
         for site in self.shortcuts.keys():
@@ -485,154 +430,11 @@ class GeminiIntentMapper:
         except Exception as e:
             logger.error(f"Error setting up Gemini model: {e}")
             raise
-
-    def preprocess_text(self, text):
-        """Preprocess text to improve command matching"""
-        if not text:
-            return ""
-            
-        # Convert to lowercase
-        text = text.lower()
-        
-        # Remove common filler words that might confuse command matching
-        filler_words = ["please", "hey", "ok", "okay", "um", "uh", "like", "just", "the", "a", "an"]
-        for word in filler_words:
-            text = text.replace(f" {word} ", " ")
-        
-        # Remove punctuation
-        for char in ".,;:!?\"'":
-            text = text.replace(char, "")
-            
-        # Normalize spaces
-        text = " ".join(text.split())
-        
-        return text.strip()
-    
-    def direct_match(self, text):
-        """Try to match a command directly including aliases"""
-        preprocessed = self.preprocess_text(text)
-        
-        # Check for exact match with commands
-        if preprocessed in self.available_commands:
-            return preprocessed
-            
-        # Check for matches with aliases
-        if preprocessed in self.reverse_aliases:
-            cmd = self.reverse_aliases[preprocessed]
-            if cmd in self.available_commands:
-                return cmd
-                
-        return None
-    
-    def fuzzy_match(self, text, threshold=0.8):
-        """Try to match a command using fuzzy matching with a threshold"""
-        preprocessed = self.preprocess_text(text)
-        if not preprocessed:
-            return None
-            
-        # Split into words to look for command components
-        words = preprocessed.split()
-        
-        # Check if any words in the input contain commands
-        best_match = None
-        best_score = 0
-        
-        # First check command aliases
-        for alias, cmd in self.reverse_aliases.items():
-            if cmd not in self.available_commands:
-                continue
-                
-            # Use ratio of overlap for multi-word commands
-            alias_words = alias.split()
-            cmd_words = cmd.split()
-            
-            # Command in text?
-            if alias in preprocessed:
-                score = 1.0
-            else:
-                # Calculate word overlap
-                alias_word_count = len(alias_words)
-                matching_words = sum(1 for word in alias_words if any(word in input_word for input_word in words))
-                score = matching_words / alias_word_count if alias_word_count > 0 else 0
-                
-                # Boost for commands that are multiple words
-                if len(alias_words) > 1 and score > 0:
-                    score += 0.1
-                    
-                # Check for Levenshtein distance for single-word commands
-                if len(alias_words) == 1 and len(alias_words[0]) > 2:
-                    for word in words:
-                        lev_score = 1 - (self._levenshtein_distance(word, alias_words[0]) / max(len(word), len(alias_words[0])))
-                        if lev_score > score:
-                            score = lev_score
-            
-            if score > best_score and score >= threshold:
-                best_score = score
-                best_match = cmd
-                
-        return best_match
     
     def map_multi_engine_intent(self, recognition_results):
         """Map multiple recognition results to a command using Gemini AI"""
         if not recognition_results:
-            logger.warning("No recognition results to process")
             return None
-        
-        logger.info(f"Processing {len(recognition_results)} recognition results with fast matching methods first")
-        
-        # STEP 1: Try direct matching (fastest) on all results
-        logger.info("Stage 1: Attempting direct matching")
-        for result in recognition_results:
-            if not result["text"]:
-                continue
-                
-            # Try direct matching (exact match and aliases)
-            logger.debug(f"Trying direct match for: '{result['text']}'")
-            direct_match = self.direct_match(result["text"])
-            if direct_match:
-                logger.info(f"Direct match found for '{result['text']}': '{direct_match}'")
-                self.command_history.insert(0, direct_match)
-                if len(self.command_history) > self.max_history_size:
-                    self.command_history.pop()
-                return direct_match
-        
-        # STEP 2: If no direct matches, try fuzzy matching on all results
-        logger.info("Stage 2: Attempting fuzzy matching")
-        for result in recognition_results:
-            if not result["text"]:
-                continue
-                
-            # Try fuzzy matching
-            logger.debug(f"Trying fuzzy match for: '{result['text']}'")
-            fuzzy_match = self.fuzzy_match(result["text"])
-            if fuzzy_match:
-                logger.info(f"Fuzzy match found for '{result['text']}': '{fuzzy_match}'")
-                self.command_history.insert(0, fuzzy_match)
-                if len(self.command_history) > self.max_history_size:
-                    self.command_history.pop()
-                return fuzzy_match
-        
-        # STEP 3: If no fuzzy matches, try simple substring matching
-        logger.info("Stage 3: Attempting substring matching")
-        for result in recognition_results:
-            if not result["text"]:
-                continue
-                
-            logger.debug(f"Trying substring match for: '{result['text']}'")
-            # Try simple substring matching
-            for cmd in self.available_commands:
-                if cmd.lower() in result["text"].lower():
-                    matched_command = cmd
-                    logger.info(f"Substring match found: '{matched_command}' in '{result['text']}'")
-                    
-                    # Update command history
-                    self.command_history.insert(0, matched_command)
-                    if len(self.command_history) > self.max_history_size:
-                        self.command_history.pop()
-                    return matched_command
-        
-        # STEP 4: If all faster methods fail, try Gemini API as last resort
-        logger.info("Stage 4: All fast matching methods failed, attempting Gemini API")
         
         # Create command descriptions for better matching
         commands_with_descriptions = self._create_command_descriptions()
@@ -646,21 +448,116 @@ class GeminiIntentMapper:
             history_json = json.dumps(self.command_history)
             history_context = f"\nRecent command history (newest to oldest): {history_json}"
         
-        # Try each engine one at a time with Gemini
+        # Process each recognition result sequentially
         for result in recognition_results:
             if not result["text"]:
-                logger.debug(f"Skipping empty result from {result['engine']}")
+                continue
+            print(f"DEBUG - Recognized text: '{result['text']}'")     
+            # Direct keyword matching first (fast path)
+            if result["text"] in self.available_commands:
+                logger.info(f"Direct match found in {result['engine']}: '{result['text']}'")
+                self.command_history.insert(0, result["text"])
+                if len(self.command_history) > self.max_history_size:
+                    self.command_history.pop()
+                return result["text"]
+                
+            # Create the prompt for Gemini with just this one result
+            recognition_result_str = f"{result['engine'].capitalize()}: '{result['text']}'"
+            
+            prompt = f"""
+            Task: You are a voice command interpreter for a computer control system. Map the speech recognition result to the correct command.
+            
+            Available commands:
+            {commands_json}
+            
+            Speech recognition result:
+            {recognition_result_str}
+
+            RULES (in priority order):
+            1. If the recognition EXACTLY matches a command from the available commands list, use that command.
+            2. If the recognition is within 1-2 characters of a command (like "clik" vs "click"), use the command.
+            3. Only if no match is found, look for semantic matches or substrings.
+            4. Give more priority to commands with lower processing time and clearer recognition (i.e., simpler phrases, high confidence if available).
+            5. Match command based on majority of recognition engines. for example, if 2 out of 3 engines recognize "click", then return "click".
+        
+            Examples:
+            - If engines recognized: ["clip", "click", null] → return "click" (exact match to available command)
+            - If engines recognized: ["write", "right", "rite"] → return "right" (exact match to available command)
+            - If engines recognized: ["moved own", "move down", null] → return "down" (semantic match to command)
+            - If engines recognized: ["click", "click", "clique"] → return "click" (majority of engines recognized "click")
+
+
+            IMPORTANT: If multiple engines recognized valid commands, prioritize the exact matches in the available commands list.
+            Return ONLY the exact command string from the available commands list. Return "NO_MATCH" if no match can be made.
+            
+            Command:
+            """
+            
+            logger.info(f"Sending request to Gemini API for {result['engine']} recognition")
+            
+            try:
+                # Using similar syntax to test.py
+                generation_config = {
+                    "temperature": 0.1,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": 32,
+                }
+                
+                # # Generate content using the Gemini model
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=generation_config
+                )
+                
+                # Clean up the response
+                matched_command = response.text.strip()
+                matched_command = matched_command.strip('"\'`')  # Remove quotes if present
+                logger.info(f"Gemini matched {result['engine']} result to '{matched_command}'")
+                
+                matched_command = None
+                for key, value in commands_with_descriptions.items():
+                    if key in result["text"]:
+                        matched_command = value
+                        logger.info(f"Gemini matched {result['engine']} result to '{matched_command}'")
+                        break
+
+                
+                # Handle empty or unknown responses
+                if not matched_command or matched_command.lower() in ["unknown", "none", "n/a", "", "no_match"]:
+                    logger.info(f"No match found for {result['engine']} result, trying next engine")
+                    continue
+                
+                # Check if this is in our available commands
+                if matched_command in self.available_commands:
+                    # Update command history
+                    self.command_history.insert(0, matched_command)
+                    if len(self.command_history) > self.max_history_size:
+                        self.command_history.pop()
+                    return matched_command
+                else:
+                    logger.warning(f"Gemini returned '{matched_command}' which is not in available commands")
+                    # Try to find close matches
+                    closest_command = self._find_closest_command([result])
+                    if closest_command:
+                        logger.info(f"Found closest command match: {closest_command}")
+                        return closest_command
+                    
+            except Exception as e:
+                logger.error(f"Error calling Gemini API for {result['engine']}: {e}")
+                print(f"Error calling Gemini API for {result['engine']}: {e}")
+        
+        # If we've tried all engines and found no match, try a fallback approach
+        logger.info("No matches found from any engine, trying fallback approach")
+        
+        # Fallback to direct text matching and edit distance
+        for result in recognition_results:
+            if not result["text"]:
                 continue
                 
-            logger.debug(f"Processing result with Gemini from {result['engine']}: '{result['text']}'")
-            print(f"Fast matching failed, trying Gemini API with: '{result['text']}'")     
-            
-            matched_command = self._process_with_gemini(result, commands_json, history_context)
-            if matched_command:
-                return matched_command
-        
-        # STEP 5: Final fallback - Levenshtein distance
-        logger.info("Stage 5: All methods failed, attempting final Levenshtein fallback")
+            # Check for direct match again
+            if result["text"] in self.available_commands:
+                return result["text"]
         
         # If no direct match, try the closest match with edit distance
         closest_command = self._find_closest_command(recognition_results)
@@ -668,100 +565,6 @@ class GeminiIntentMapper:
             logger.info(f"Found closest command match as fallback: {closest_command}")
             return closest_command
                 
-        return None
-    
-    def _process_with_gemini(self, result, commands_json, history_context):
-        """Process a single recognition result with Gemini API"""
-        # Create the prompt for Gemini with just this one result
-        recognition_result_str = f"{result['engine'].capitalize()}: '{result['text']}'"
-        
-        # Include aliases information in the prompt
-        aliases_info = {}
-        for cmd, aliases in self.command_aliases.items():
-            if cmd in self.available_commands:
-                aliases_info[cmd] = aliases
-                
-        aliases_json = json.dumps(aliases_info)
-        
-        prompt = f"""
-        Task: You are a voice command interpreter for a computer control system. Map the speech recognition result to the correct command.
-        
-        Available commands:
-        {commands_json}
-        
-        Command aliases (alternative ways to say each command):
-        {aliases_json}
-        
-        Speech recognition result:
-        {recognition_result_str}
-
-        RULES (in priority order):
-        1. If the recognition EXACTLY matches a command from the available commands list, use that command.
-        2. If the recognition exactly matches any alias from the command aliases, use the corresponding command.
-        3. If the recognition is within 1-2 characters of a command (like "clik" vs "click"), use the command.
-        4. If the recognition contains the command as a substring, use the command.
-        5. If no exact match is found, look for semantic matches or similar-sounding words.
-        6. Give more priority to commands with lower processing time and clearer recognition.
-        
-        Examples:
-        - If engines recognized: ["clip", "click", null] → return "click" (similar to command)
-        - If engines recognized: ["write", "right", "rite"] → return "right" (exact match to command)
-        - If engines recognized: ["moved own", "move down", null] → return "down" (contains command)
-        - If engines recognized: ["click", "click", "clique"] → return "click" (majority of engines recognized)
-        - If engines recognized: ["lock the mouse", "lock mouse", null] → return "lock" (matches alias "lock mouse")
-
-        IMPORTANT: If multiple engines recognized valid commands, prioritize the exact matches in the available commands list.
-        Return ONLY the exact command string from the available commands list. Return "NO_MATCH" if no match can be made.
-        
-        Command:
-        """
-        
-        logger.info(f"Sending request to Gemini API for {result['engine']} recognition")
-        
-        try:
-            # Using similar syntax to test.py
-            generation_config = {
-                "temperature": 0.1,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 32,
-            }
-            
-            # Generate content using the Gemini model
-            logger.debug("Sending prompt to Gemini API")
-            response = self.model.generate_content(
-                prompt,
-                generation_config=generation_config
-            )
-            
-            # Clean up the response
-            matched_command = response.text.strip()
-            matched_command = matched_command.strip('"\'`')  # Remove quotes if present
-            logger.info(f"Gemini matched {result['engine']} result to '{matched_command}'")
-            
-            # Check if it's a valid command
-            if matched_command in self.available_commands:
-                # Update command history
-                self.command_history.insert(0, matched_command)
-                if len(self.command_history) > self.max_history_size:
-                    self.command_history.pop()
-                return matched_command
-            
-            # Handle empty or unknown responses
-            if not matched_command or matched_command.lower() in ["unknown", "none", "n/a", "", "no_match"]:
-                logger.info(f"No match found for {result['engine']} result")
-                return None
-            
-            # Try to find close matches if Gemini returned an invalid command
-            closest_command = self._find_closest_command([result])
-            if closest_command:
-                logger.info(f"Found closest command match: {closest_command}")
-                return closest_command
-                
-        except Exception as e:
-            logger.error(f"Error calling Gemini API for {result['engine']}: {e}")
-            print(f"Error calling Gemini API for {result['engine']}: {e}")
-            
         return None
     
     def _create_command_descriptions(self):
@@ -781,6 +584,7 @@ class GeminiIntentMapper:
             # Exit commands
             "exit": "exit the program",
             "quit": "quit the program",
+            "stop listening": "stop the program",
 
             # Browser commands
             "open browser": "open the browser",
@@ -846,32 +650,11 @@ class MultiEngineVoiceControl:
         # Load environment variables
         load_env_file()
         
-        # Set up proper logging
+        # Set up logging
         self.log_file = log_file
 
-        # Make sure the directory exists
-        log_dir = os.path.dirname(self.log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir, exist_ok=True)
-            
-        # Configure logging to use the specified file
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            filename=self.log_file,
-            filemode='a'  # Append mode
-        )
-        logger.info(f"Logging configured to write to {os.path.abspath(self.log_file)}")
-        
-        # Also log to console
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
-        logger.addHandler(console_handler)
-        
-        # Print confirmation to stdout
-        print(f"Logging to file: {os.path.abspath(self.log_file)}")
+        # Set up logging with path in audio_to_cursor directory
+        self.log_file = os.path.join(os.path.dirname(__file__), log_file)
         
         # Check if PyAutoGUI command executor is available
         self.pyautogui_executor = None
@@ -927,53 +710,10 @@ class MultiEngineVoiceControl:
             logger.error(f"Failed to initialize Gemini intent mapper: {e}")
             print(f"Error: Failed to initialize Gemini intent mapper: {e}")
             sys.exit(1)
-            
-    def cleanup(self):
-        """Clean up resources used by the voice control system"""
-        logger.info("Cleaning up voice control resources")
-        
-        try:
-            # Clean up speech module resources
-            if hasattr(self, 'speech_module'):
-                # Clean up Whisper models
-                if hasattr(self.speech_module, 'whisper_model'):
-                    try:
-                        del self.speech_module.whisper_model
-                        logger.info("Cleaned up Whisper model")
-                    except Exception as e:
-                        logger.error(f"Error cleaning up Whisper model: {e}")
-                
-                # Clean up Vosk models
-                if hasattr(self.speech_module, 'vosk_model'):
-                    try:
-                        del self.speech_module.vosk_model
-                        logger.info("Cleaned up Vosk model")
-                    except Exception as e:
-                        logger.error(f"Error cleaning up Vosk model: {e}")
-            
-            # Clean up multiprocessing resources
-            try:
-                import multiprocessing
-                multiprocessing.resource_tracker._resource_tracker.clear()
-                logger.info("Cleared multiprocessing resource tracker")
-            except Exception as e:
-                logger.error(f"Error clearing multiprocessing resources: {e}")
-                
-            # Force Python garbage collection
-            import gc
-            gc.collect()
-            logger.info("Triggered garbage collection")
-            
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
-            
-        logger.info("Voice control cleanup completed")
     
     def log_command(self, recognition_results, interpreted_command):
         """Log the recognition results and the final interpretation"""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        logger.info(f"Command logged: Final interpretation: '{interpreted_command}'")
-        
         try:
             with open(self.log_file, "a") as f:
                 f.write(f"{timestamp} | Multi-Engine Results:\n")
@@ -981,17 +721,15 @@ class MultiEngineVoiceControl:
                     if result["text"]:
                         f.write(f"  {result['engine'].capitalize()}: '{result['text']}'\n")
                 f.write(f"  Final interpretation: '{interpreted_command}'\n\n")
-            logger.debug(f"Command details written to {self.log_file}")
+            logger.info(f"Command logged: Final interpretation: '{interpreted_command}'")
         except Exception as e:
-            logger.error(f"Error logging command to file: {e}")
+            logger.error(f"Error logging command: {e}")
     
     def process_voice_command(self):
         """Process a voice command through the entire pipeline using multiple engines"""
         # STEP 1: Multi-engine speech recognition
-        logger.info("Starting voice command processing")
         recognition_results = self.speech_module.listen_and_recognize()
         if not recognition_results:
-            logger.info("No valid speech detected")
             print("No speech detected or timeout occurred.")
             return None, True
         
@@ -1004,17 +742,12 @@ class MultiEngineVoiceControl:
                 print(f"  {result['engine'].capitalize()}: No result")
         
         # STEP 2: Process each engine sequentially with Gemini
-        logger.info("Interpreting command with Gemini")
         print("\nProcessing engines sequentially...")
         
         # STEP 3: Intent mapping with Gemini
-        start_time = time.time()
         interpreted_command = self.intent_mapper.map_multi_engine_intent(recognition_results)
-        processing_time = time.time() - start_time
-        logger.debug(f"Command interpretation took {processing_time:.2f} seconds")
         
         if not interpreted_command:
-            logger.warning("Failed to interpret command")
             print("❌ Could not interpret the command. Try again with a clearer command.")
             return None, True
         
@@ -1022,34 +755,32 @@ class MultiEngineVoiceControl:
         self.log_command(recognition_results, interpreted_command)
         
         # Show final interpretation
-        logger.info(f"Final interpretation: '{interpreted_command}'")
         print(f"\n🎯 Final interpretation: '{interpreted_command}'")
         
         # STEP 4: Execute the command
-        logger.info(f"Executing command: '{interpreted_command}'")
-        print(f"Executing: '{interpreted_command}'")
+        # print(f"Executing: '{interpreted_command}'")
+        # global MOUSE_LOCKED_STATE
+        # #Handle mouse lock/unlock commands
+        # if "lock" in interpreted_command:
+        #     MOUSE_LOCKED_STATE = True
+        #     print("🔒 Mouse movement locked. Say 'unlock' to enable movement.")
+        #     return interpreted_command, True
+        # elif "unlock" in interpreted_command:
+        #     MOUSE_LOCKED_STATE = False
+        #     print("🔓 Mouse movement unlocked.")
+        #     return interpreted_command, True
+
+        if self.pyautogui_executor:
+            # Use PyAutoGUI command executor if available
+            should_continue = self.pyautogui_executor.execute_command(interpreted_command)
+        else:
+            # Fall back to traditional voice control
+            should_continue = self.voice_control.execute_command(interpreted_command)
         
-        # Execute the command directly using the PyAutoGUI executor
-        try:
-            if self.pyautogui_executor:
-                # Use PyAutoGUI command executor if available
-                logger.debug("Using PyAutoGUI executor")
-                should_continue = self.pyautogui_executor.execute_command(interpreted_command)
-            else:
-                # Fall back to traditional voice control
-                logger.debug("Using traditional voice control executor")
-                should_continue = self.voice_control.execute_command(interpreted_command)
-            
-            logger.info(f"Command execution complete. Continue: {should_continue}")
-            return interpreted_command, should_continue
-        except Exception as e:
-            logger.error(f"Error executing command: {e}")
-            print(f"Error: {e}")
-            return interpreted_command, True
+        return interpreted_command, should_continue
     
     def run(self):
         """Run the multi-engine voice control system"""
-        logger.info("Starting multi-engine voice control system")
         print("Multi-Engine Voice Control System")
         print("================================")
         print("This system uses multiple speech recognition engines sequentially:")
@@ -1098,60 +829,20 @@ class MultiEngineVoiceControl:
         if self.pyautogui_executor:
             print(f"- PyAutoGUI logs: pyautogui_commands.log")
         
-        logger.info("Voice control system entering main command loop")
-        running = True
-        command_count = 0
+        logger.info("Multi-engine voice control system started")
         
-        try:
-            while running:
-                try:
-                    command_count += 1
-                    logger.info(f"Waiting for command #{command_count}")
-                    interpreted_command, running = self.process_voice_command()
-                    
-                    if not running:
-                        logger.info("Received exit command")
-                except KeyboardInterrupt:
-                    logger.info("Keyboard interrupt received, shutting down")
-                    running = False
-                except Exception as e:
-                    logger.error(f"Error in command processing loop: {e}")
-                    print(f"Error: {e}")
-                    # Continue running despite errors
-        finally:
-            # Ensure resources are cleaned up properly
-            self.cleanup()
+        running = True
+        while running:
+            _, running = self.process_voice_command()
             
         logger.info("Multi-engine voice control system stopped")
 
 
 if __name__ == "__main__":
     try:
-        # Set multiprocessing start method to help prevent resource leaks
-        import multiprocessing
-        if hasattr(multiprocessing, 'set_start_method'):
-            try:
-                multiprocessing.set_start_method('spawn')
-            except RuntimeError:
-                # Method might already be set
-                pass
-                
         voice_control = MultiEngineVoiceControl(move_distance=100)
-        
-        try:
-            voice_control.run()
-        finally:
-            # Ensure cleanup happens even if an error occurs
-            voice_control.cleanup()
+        voice_control.run()
     except KeyboardInterrupt:
         logger.info("Program terminated by user")
         print("\nProgram terminated by user")
-        
-        # Force cleanup of multiprocessing resources
-        try:
-            import multiprocessing
-            multiprocessing.resource_tracker._resource_tracker.clear()
-        except:
-            pass
-            
         sys.exit(0) 

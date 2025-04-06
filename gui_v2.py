@@ -1,23 +1,53 @@
-import sys
 import os
-import cv2
+import signal
+import subprocess
+import sys
 import threading
 import time
-import subprocess
-import signal
+
+import cv2
 import pyautogui
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                            QHBoxLayout, QPushButton, QSlider, QLabel, QMessageBox,
-                            QTextEdit, QSplitter, QTabWidget, QProgressBar, QCheckBox)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
-from PyQt6.QtGui import QImage, QPixmap, QIcon, QColor, QTextCursor, QFont
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QIcon, QImage, QPixmap, QTextCursor
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QSlider,
+    QSplitter,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from audio_to_cursor.calibration import CalibrationError, CalibrationManager
 from pynosetracker import NoseTracker
-from audio_to_cursor.calibration import CalibrationManager, CalibrationError
 
 # Global state flags for resource management
 CALIBRATION_IN_PROGRESS = False
 VOICE_CONTROL_RUNNING = False
 VOICE_CONTROL_PID = None
+
+# Path to typing mode flag file
+TYPING_MODE_FILE = "typing_mode.flag"
+# Path to mouse lock flag file
+MOUSE_LOCK_FILE = "mouse_lock.flag"
+
+# Helper function to check if typing mode is active
+def is_typing_mode_active():
+    """Check if typing mode is active by checking the flag file"""
+    return os.path.exists(TYPING_MODE_FILE)
+
+# Helper function to check if mouse is locked
+def is_mouse_locked():
+    """Check if mouse is locked by checking the flag file"""
+    return os.path.exists(MOUSE_LOCK_FILE)
 
 class CalibrationWorker(QThread):
     """Worker thread for audio calibration"""
@@ -85,6 +115,35 @@ class LogReader(threading.Thread):
         self.running = True
         self.last_position = 0
         
+        # Define highlight patterns and colors
+        self.highlight_patterns = [
+            # Speech detection events - yellow
+            {"pattern": "Listening for voice command", "color": "#F9A826"},
+            {"pattern": "Audio captured", "color": "#F9A826"},
+            
+            # Recognition events - light blue
+            {"pattern": "recognized:", "color": "#03A9F4"},
+            {"pattern": "Collected", "color": "#03A9F4"},
+            
+            # Command interpretation - green
+            {"pattern": "Final interpretation:", "color": "#4CAF50"},
+            {"pattern": "Executing command:", "color": "#4CAF50"},
+            
+            # Typing mode - purple
+            {"pattern": "Typing mode", "color": "#9C27B0"},
+            {"pattern": "Typing:", "color": "#9C27B0"},
+            
+            # Mouse lock - orange
+            {"pattern": "Mouse movement locked", "color": "#FF5722"},
+            {"pattern": "Mouse movement unlocked", "color": "#2196F3"},
+            
+            # Errors and warnings - red
+            {"pattern": "ERROR", "color": "#F44336"},
+            {"pattern": "WARNING", "color": "#FF9800"},
+            {"pattern": "Failed", "color": "#F44336"},
+            {"pattern": "Error", "color": "#F44336"}
+        ]
+        
     def run(self):
         while self.running:
             if os.path.exists(self.log_file):
@@ -94,7 +153,9 @@ class LogReader(threading.Thread):
                         f.seek(self.last_position)
                         new_content = f.read()
                         if new_content:
-                            self.text_widget.append(new_content)
+                            # Apply highlighting
+                            self.append_highlighted_text(new_content)
+                            
                             # Auto-scroll to bottom
                             cursor = self.text_widget.textCursor()
                             cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -105,12 +166,37 @@ class LogReader(threading.Thread):
                     print(f"Error reading log file: {e}")
             time.sleep(0.5)  # Check for updates every half second
     
+    def append_highlighted_text(self, text):
+        """Append text with highlighting for important events"""
+        # Split text into lines for line-by-line processing
+        lines = text.strip().split('\n')
+        
+        for line in lines:
+            if not line.strip():
+                continue
+                
+            # Check for any highlights
+            highlighted = False
+            for highlight in self.highlight_patterns:
+                if highlight["pattern"].lower() in line.lower():
+                    # Set the text color for this line
+                    self.text_widget.setTextColor(QColor(highlight["color"]))
+                    self.text_widget.append(line)
+                    # Reset color to default black
+                    self.text_widget.setTextColor(QColor("#000000"))
+                    highlighted = True
+                    break
+            
+            # If no highlight pattern matched, append with default color
+            if not highlighted:
+                self.text_widget.append(line)
+    
     def stop(self):
         self.running = False
 
 
 class NoseTrackerGUIv2(QMainWindow):
-    def __init__(self, log_file="multi_voice_logs.txt", console_log_file=None):
+    def __init__(self, voice_log_file="multi_voice_logs.txt", console_log_file=None):
         super().__init__()
         
         # Initialize the state flag
@@ -132,10 +218,42 @@ class NoseTrackerGUIv2(QMainWindow):
         else:
             VOICE_CONTROL_RUNNING = False
 
-        self.setWindowTitle("Voxel")
-        self.setGeometry(100, 100, 500, 500)
-        self.log_file = log_file
+        # Voxel color scheme
+        self.colors = {
+            "primary_bg": "#F5F5DC",  # Beige background color
+            "secondary_bg": "#EFEFEF", # Light gray for contrast elements
+            "text": "#000000",         # Black text
+            "accent": "#333333",       # Dark gray for accents
+            "success": "#4CAF50",      # Green for success indicators
+            "error": "#f44336",        # Red for error indicators
+            "warning": "#FF9800",      # Orange for warnings
+            "info": "#2196F3",         # Blue for info messages
+            "highlight": "#9C27B0"     # Purple for highlights
+        }
+
+        # Set window title with custom styling
+        self.setWindowTitle("Voxel - Look Mom No Hands")
+        
+        # Make the window larger by default and position it centered
+        screen_size = QApplication.primaryScreen().size()
+        window_width = int(screen_size.width() * 0.85)
+        window_height = int(screen_size.height() * 0.85)
+        self.setGeometry(
+            (screen_size.width() - window_width) // 2,
+            (screen_size.height() - window_height) // 2,
+            window_width, 
+            window_height
+        )
+        
+        # Full screen toggle key (F11)
+        self.is_fullscreen = False
+        
+        self.log_file = voice_log_file
         self.console_log_file = console_log_file
+        
+        print(f"GUI initialized with:")
+        print(f"- Voice log file: {self.log_file}")
+        print(f"- Console log file: {self.console_log_file}")
         
         # Create monospace font for logs
         self.log_font = QFont("Courier New")  # Primary monospace font
@@ -149,6 +267,87 @@ class NoseTrackerGUIv2(QMainWindow):
         except:
             pass
         
+        # Set application style
+        self.setStyleSheet(f"""
+            QMainWindow, QWidget {{ 
+                background-color: {self.colors['primary_bg']}; 
+                color: {self.colors['text']}; 
+            }}
+            QTabWidget::pane {{ 
+                border: 1px solid {self.colors['accent']}; 
+                background-color: {self.colors['primary_bg']}; 
+            }}
+            QTabBar::tab {{ 
+                background-color: {self.colors['secondary_bg']}; 
+                color: {self.colors['text']}; 
+                padding: 8px 20px; 
+                border: 1px solid {self.colors['accent']}; 
+                border-bottom: none; 
+                border-top-left-radius: 6px; 
+                border-top-right-radius: 6px; 
+            }}
+            QTabBar::tab:selected {{ 
+                background-color: {self.colors['primary_bg']}; 
+                border-bottom: none; 
+                font-weight: bold;
+            }}
+            QPushButton {{ 
+                background-color: {self.colors['accent']}; 
+                color: white; 
+                border-radius: 5px;
+                padding: 6px 12px;
+                min-height: 15px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ 
+                background-color: #555555; 
+            }}
+            QLabel {{ 
+                color: {self.colors['text']}; 
+            }}
+            QSlider::groove:horizontal {{
+                border: 1px solid {self.colors['accent']};
+                height: 8px;
+                background: {self.colors['secondary_bg']};
+                margin: 2px 0;
+                border-radius: 4px;
+            }}
+            QSlider::handle:horizontal {{
+                background: {self.colors['accent']};
+                border: 1px solid {self.colors['accent']};
+                width: 18px;
+                height: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+            }}
+            QTextEdit {{ 
+                background-color: {self.colors['secondary_bg']}; 
+                color: {self.colors['text']}; 
+                border: 1px solid {self.colors['accent']}; 
+                border-radius: 5px;
+            }}
+            QProgressBar {{
+                border: 1px solid {self.colors['accent']};
+                border-radius: 5px;
+                text-align: center;
+                background-color: {self.colors['secondary_bg']};
+                color: {self.colors['text']};
+            }}
+            QProgressBar::chunk {{
+                background-color: {self.colors['success']};
+                width: 10px;
+                border-radius: 4px;
+            }}
+            QCheckBox {{
+                color: {self.colors['text']};
+                spacing: 5px;
+            }}
+            QCheckBox::indicator {{
+                width: 16px;
+                height: 16px;
+            }}
+        """)
+        
         # Initialize nose tracker in headless mode (we'll handle the display)
         self.tracker = NoseTracker(headless=True)
         self.tracking_active = False
@@ -160,6 +359,35 @@ class NoseTrackerGUIv2(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+        
+        # Add header with Voxel logo and tagline
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Logo and title
+        title_label = QLabel("VOXEL")
+        title_label.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        header_layout.addWidget(title_label)
+        
+        # Tagline
+        tagline_label = QLabel("LOOK MOM NO HANDS")
+        tagline_label.setFont(QFont("Arial", 12))
+        header_layout.addWidget(tagline_label)
+        
+        # Add spacer and fullscreen button
+        header_layout.addStretch()
+        
+        # Fullscreen button
+        self.fullscreen_button = QPushButton("Fullscreen")
+        self.fullscreen_button.clicked.connect(self.toggle_fullscreen)
+        self.fullscreen_button.setToolTip("Toggle fullscreen mode (F11)")
+        header_layout.addWidget(self.fullscreen_button)
+        
+        # Add header to main layout
+        main_layout.addWidget(header_widget)
         
         # Create tabs for main content
         self.main_tabs = QTabWidget()
@@ -168,6 +396,8 @@ class NoseTrackerGUIv2(QMainWindow):
         # ---- Nose Tracker Tab ----
         nose_tracker_tab = QWidget()
         nose_tracker_layout = QVBoxLayout(nose_tracker_tab)
+        nose_tracker_layout.setContentsMargins(10, 10, 10, 10)
+        nose_tracker_layout.setSpacing(10)
         
         # Create splitter for resizing sections
         self.tracker_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -176,62 +406,93 @@ class NoseTrackerGUIv2(QMainWindow):
         # Top widget (camera and controls)
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(5, 5, 5, 5)
+        top_layout.setSpacing(10)
         
-        # Camera feed display
+        # Camera feed display with frame
+        camera_frame = QWidget()
+        camera_frame.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; border-radius: 8px;")
+        camera_layout = QVBoxLayout(camera_frame)
+        camera_layout.setContentsMargins(2, 2, 2, 2)
+        
         self.camera_label = QLabel()
         self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.camera_label.setMinimumHeight(300)
-        top_layout.addWidget(self.camera_label)
+        self.camera_label.setStyleSheet("background-color: #000000; border-radius: 6px;")
+        camera_layout.addWidget(self.camera_label)
+        
+        top_layout.addWidget(camera_frame)
         
         # Status label
         self.status_label = QLabel("Status: Ready - Press C to calibrate")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setStyleSheet("font-size: 14px; font-weight: bold; padding: 5px;")
         top_layout.addWidget(self.status_label)
         
-        # Controls layout
-        controls_layout = QHBoxLayout()
+        # Controls layout in a nice frame
+        controls_frame = QWidget()
+        controls_frame.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; border-radius: 8px;")
+        controls_layout = QHBoxLayout(controls_frame)
+        controls_layout.setContentsMargins(10, 10, 10, 10)
+        controls_layout.setSpacing(10)
         
         # Sensitivity slider
         sensitivity_layout = QVBoxLayout()
+        sensitivity_layout.setSpacing(5)
         sensitivity_label = QLabel("Sensitivity")
+        sensitivity_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sensitivity_label.setStyleSheet("font-weight: bold;")
+        
         self.sensitivity_slider = QSlider(Qt.Orientation.Horizontal)
         self.sensitivity_slider.setMinimum(1)
         self.sensitivity_slider.setMaximum(10)
         self.sensitivity_slider.setValue(8)
         self.sensitivity_slider.valueChanged.connect(self.update_sensitivity)
+        
         sensitivity_layout.addWidget(sensitivity_label)
         sensitivity_layout.addWidget(self.sensitivity_slider)
         controls_layout.addLayout(sensitivity_layout)
         
         # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(5)
+        
         self.calibrate_button = QPushButton("Calibrate (C)")
         self.calibrate_button.clicked.connect(self.start_calibration)
-        controls_layout.addWidget(self.calibrate_button)
+        button_layout.addWidget(self.calibrate_button)
         
         self.start_button = QPushButton("Start Tracking (T)")
         self.start_button.clicked.connect(self.toggle_tracking)
-        controls_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.start_button)
         
         self.recenter_button = QPushButton("Recenter (R)")
         self.recenter_button.clicked.connect(self.recenter)
-        controls_layout.addWidget(self.recenter_button)
+        button_layout.addWidget(self.recenter_button)
+        
+        controls_layout.addLayout(button_layout)
         
         # Add voice control toggle button (if console log file is provided)
         if console_log_file:
             self.voice_control_button = QPushButton("Voice Control: ON" if VOICE_CONTROL_RUNNING else "Voice Control: OFF")
             self.voice_control_button.clicked.connect(self.toggle_voice_control)
             self.voice_control_button.setStyleSheet(
-                "QPushButton { background-color: #4CAF50; color: white; border-radius: 10px; }" if VOICE_CONTROL_RUNNING 
-                else "QPushButton { background-color: #f44336; color: white; border-radius: 10px; }"
+                f"QPushButton {{ background-color: {self.colors['success']}; color: white; border-radius: 5px; }}" if VOICE_CONTROL_RUNNING 
+                else f"QPushButton {{ background-color: {self.colors['error']}; color: white; border-radius: 5px; }}"
             )
             controls_layout.addWidget(self.voice_control_button)
         
-        top_layout.addLayout(controls_layout)
+        top_layout.addWidget(controls_frame)
         
-        # Add keyboard shortcuts help
-        shortcuts_label = QLabel("Keyboard Shortcuts: C - Calibrate | R - Recenter | T - Toggle Tracking")
+        # Add keyboard shortcuts help in a nice info box
+        shortcuts_frame = QWidget()
+        shortcuts_frame.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; border-radius: 8px;")
+        shortcuts_layout = QVBoxLayout(shortcuts_frame)
+        shortcuts_layout.setContentsMargins(5, 5, 5, 5)
+        
+        shortcuts_label = QLabel("Keyboard Shortcuts: C - Calibrate | R - Recenter | T - Toggle Tracking | F11 - Fullscreen")
         shortcuts_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        top_layout.addWidget(shortcuts_label)
+        shortcuts_layout.addWidget(shortcuts_label)
+        top_layout.addWidget(shortcuts_frame)
         
         # Add top widget to splitter
         self.tracker_splitter.addWidget(top_widget)
@@ -239,6 +500,7 @@ class NoseTrackerGUIv2(QMainWindow):
         # Bottom widget (logs)
         bottom_widget = QWidget()
         bottom_layout = QVBoxLayout(bottom_widget)
+        bottom_layout.setContentsMargins(5, 5, 5, 5)
         
         # Create log tab widget
         self.log_tabs = QTabWidget()
@@ -273,7 +535,7 @@ class NoseTrackerGUIv2(QMainWindow):
         self.tracker_splitter.addWidget(bottom_widget)
         
         # Set initial sizes for splitter
-        self.tracker_splitter.setSizes([500, 200])
+        self.tracker_splitter.setSizes([int(window_height * 0.7), int(window_height * 0.3)])
         
         # Add tracker tab to main tabs
         self.main_tabs.addTab(nose_tracker_tab, "Nose Tracker")
@@ -281,15 +543,22 @@ class NoseTrackerGUIv2(QMainWindow):
         # ---- Audio Calibration Tab ----
         audio_calibration_tab = QWidget()
         audio_layout = QVBoxLayout(audio_calibration_tab)
+        audio_layout.setContentsMargins(10, 10, 10, 10)
+        audio_layout.setSpacing(15)
         
         # Store reference to the tab for switching
         self.audio_calibration_tab = audio_calibration_tab
         
-        # Title and description
+        # Title and description in a nice frame
+        calibration_header = QWidget()
+        calibration_header.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; border-radius: 8px;")
+        calibration_header_layout = QVBoxLayout(calibration_header)
+        calibration_header_layout.setContentsMargins(10, 10, 10, 10)
+        
         audio_title = QLabel("Audio Calibration")
         audio_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        audio_title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        audio_layout.addWidget(audio_title)
+        audio_title.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        calibration_header_layout.addWidget(audio_title)
         
         description = QLabel(
             "This process will calibrate the audio noise filter for voice control.\n"
@@ -298,43 +567,71 @@ class NoseTrackerGUIv2(QMainWindow):
         )
         description.setAlignment(Qt.AlignmentFlag.AlignCenter)
         description.setWordWrap(True)
-        audio_layout.addWidget(description)
+        description.setStyleSheet("padding: 5px; font-size: 12px;")
+        calibration_header_layout.addWidget(description)
+        
+        audio_layout.addWidget(calibration_header)
         
         # Status display
         self.calibration_status = QLabel("Ready to calibrate")
         self.calibration_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.calibration_status.setStyleSheet("font-size: 14px; font-weight: bold; padding: 5px;")
         audio_layout.addWidget(self.calibration_status)
         
         # Progress bar
         self.calibration_progress = QProgressBar()
         self.calibration_progress.setRange(0, 100)
         self.calibration_progress.setValue(0)
+        self.calibration_progress.setMinimumHeight(25)
         audio_layout.addWidget(self.calibration_progress)
+        
+        # Controls in a frame
+        calibration_controls = QWidget()
+        calibration_controls.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; border-radius: 8px;")
+        calibration_controls_layout = QVBoxLayout(calibration_controls)
+        calibration_controls_layout.setContentsMargins(10, 10, 10, 10)
+        calibration_controls_layout.setSpacing(10)
         
         # Keep test files checkbox
         self.keep_files_checkbox = QCheckBox("Keep test files after calibration")
-        audio_layout.addWidget(self.keep_files_checkbox)
+        calibration_controls_layout.addWidget(self.keep_files_checkbox)
         
         # Buttons
         calibration_buttons = QHBoxLayout()
+        calibration_buttons.setSpacing(10)
         
         self.start_audio_calibration_btn = QPushButton("Start Audio Calibration")
+        self.start_audio_calibration_btn.setMinimumHeight(30)
         self.start_audio_calibration_btn.clicked.connect(self.start_audio_calibration)
         calibration_buttons.addWidget(self.start_audio_calibration_btn)
         
         self.cancel_audio_calibration_btn = QPushButton("Cancel")
+        self.cancel_audio_calibration_btn.setMinimumHeight(30)
         self.cancel_audio_calibration_btn.clicked.connect(self.cancel_audio_calibration)
         self.cancel_audio_calibration_btn.setEnabled(False)
         calibration_buttons.addWidget(self.cancel_audio_calibration_btn)
         
-        audio_layout.addLayout(calibration_buttons)
+        calibration_controls_layout.addLayout(calibration_buttons)
+        audio_layout.addWidget(calibration_controls)
         
         # Calibration log
+        calibration_log_frame = QWidget()
+        calibration_log_frame.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; border-radius: 8px;")
+        calibration_log_layout = QVBoxLayout(calibration_log_frame)
+        calibration_log_layout.setContentsMargins(10, 10, 10, 10)
+        
+        calibration_log_label = QLabel("Calibration Log")
+        calibration_log_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        calibration_log_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        calibration_log_layout.addWidget(calibration_log_label)
+        
         self.calibration_log = QTextEdit()
         self.calibration_log.setReadOnly(True)
         self.calibration_log.setFont(self.log_font)
         self.calibration_log.setPlaceholderText("Calibration logs will appear here...")
-        audio_layout.addWidget(self.calibration_log)
+        calibration_log_layout.addWidget(self.calibration_log)
+        
+        audio_layout.addWidget(calibration_log_frame)
         
         # Add audio calibration tab to main tabs
         self.main_tabs.addTab(audio_calibration_tab, "Audio Calibration")
@@ -357,6 +654,47 @@ class NoseTrackerGUIv2(QMainWindow):
         # Add system log entry
         self.log_system_message("GUI v2 started")
         self.log_system_message(f"Monitoring voice logs from: {self.log_file}")
+        
+        # Add typing mode animation
+        self.typing_animation_active = False
+        self.animation_direction = 1
+        self.animation_offset = 0
+        self.animation_speed = 2
+        self.animation_max_offset = 5
+        self.animation_timer = QTimer()
+        self.animation_timer.timeout.connect(self.update_typing_animation)
+        self.animation_timer.start(50)  # Check every 50ms
+        
+        # Add status bar with indicators
+        status_bar = QWidget()
+        status_bar_layout = QHBoxLayout(status_bar)
+        status_bar_layout.setContentsMargins(5, 5, 5, 5)
+        status_bar_layout.setSpacing(10)
+        
+        # Add typing mode indicator label
+        self.typing_indicator = QLabel("TYPING MODE: OFF")
+        self.typing_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.typing_indicator.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; color: {self.colors['text']}; font-weight: bold; border-radius: 5px; padding: 5px; font-size: 12px;")
+        self.typing_indicator.setMinimumWidth(150)
+        status_bar_layout.addWidget(self.typing_indicator)
+        
+        status_bar_layout.addStretch()
+        
+        # Add mouse lock indicator label
+        self.lock_indicator = QLabel("MOUSE: UNLOCKED 🔓")
+        self.lock_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lock_indicator.setStyleSheet(f"background-color: {self.colors['success']}; color: white; font-weight: bold; border-radius: 5px; padding: 5px; font-size: 12px;")
+        self.lock_indicator.setMinimumWidth(150)
+        status_bar_layout.addWidget(self.lock_indicator)
+        
+        # Add AI status indicator
+        self.ai_indicator = QLabel("AI EDITOR: OFF")
+        self.ai_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.ai_indicator.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; color: {self.colors['text']}; font-weight: bold; border-radius: 5px; padding: 5px; font-size: 12px;")
+        self.ai_indicator.setMinimumWidth(150)
+        status_bar_layout.addWidget(self.ai_indicator)
+        
+        main_layout.addWidget(status_bar)
         
     def log_system_message(self, message):
         """Add a message to the system log tab"""
@@ -465,6 +803,8 @@ class NoseTrackerGUIv2(QMainWindow):
             self.toggle_tracking()
         elif event.key() == Qt.Key.Key_R:
             self.recenter()
+        elif event.key() == Qt.Key.Key_F11:
+            self.toggle_fullscreen()
         elif event.key() >= Qt.Key.Key_1 and event.key() <= Qt.Key.Key_9:
             # Handle sensitivity changes (1-9)
             value = event.key() - Qt.Key.Key_0
@@ -472,7 +812,7 @@ class NoseTrackerGUIv2(QMainWindow):
         elif event.key() == Qt.Key.Key_0:
             # Handle sensitivity 10
             self.sensitivity_slider.setValue(10)
-        
+    
     def update_sensitivity(self, value):
         self.tracker.sensitivity = self.tracker.base_sensitivity * value
         self.log_system_message(f"Sensitivity set to {value}")
@@ -617,6 +957,97 @@ class NoseTrackerGUIv2(QMainWindow):
                 self.log_system_message(f"Error starting voice control: {e}")
                 QMessageBox.warning(self, "Error", f"Failed to start voice control: {e}")
     
+    def toggle_fullscreen(self):
+        """Toggle fullscreen mode"""
+        try:
+            # Temporarily pause timers to prevent resource conflicts
+            self.timer.stop()
+            self.animation_timer.stop()
+            
+            if self.is_fullscreen:
+                # Exit fullscreen mode
+                self.showNormal()
+                self.fullscreen_button.setText("Fullscreen")
+                self.is_fullscreen = False
+            else:
+                # Enter fullscreen mode
+                self.showFullScreen()
+                self.fullscreen_button.setText("Exit Fullscreen")
+                self.is_fullscreen = True
+            
+            # Process pending events to ensure UI updates properly
+            QApplication.processEvents()
+            
+            # Resume timers
+            self.timer.start(30)
+            self.animation_timer.start(50)
+            
+            self.log_system_message(f"Toggled fullscreen mode: {self.is_fullscreen}")
+        except Exception as e:
+            # If an error occurs, restore normal window state
+            self.showNormal()
+            self.is_fullscreen = False
+            self.timer.start(30)
+            self.animation_timer.start(50)
+            self.log_system_message(f"Error during fullscreen toggle: {e}")
+            print(f"Fullscreen error: {e}")
+        
+    def update_typing_animation(self):
+        """Check typing mode and update window animation"""
+        try:
+            # Use the helper function to check typing mode state
+            typing_active = is_typing_mode_active()
+            
+            # Check if typing mode state changed
+            if typing_active and not self.typing_animation_active:
+                # Typing mode activated
+                self.typing_animation_active = True
+                self.typing_indicator.setText("TYPING MODE: ON")
+                self.typing_indicator.setStyleSheet(f"background-color: {self.colors['highlight']}; color: white; font-weight: bold; border-radius: 5px; padding: 8px; font-size: 14px;")
+                self.log_system_message("Typing mode activated - window will animate")
+            elif not typing_active and self.typing_animation_active:
+                # Typing mode deactivated
+                self.typing_animation_active = False
+                self.typing_indicator.setText("TYPING MODE: OFF")
+                self.typing_indicator.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; color: {self.colors['text']}; font-weight: bold; border-radius: 5px; padding: 8px; font-size: 14px;")
+                self.log_system_message("Typing mode deactivated - animation stopped")
+                # Reset window position
+                self.move(self.x(), self.y() - self.animation_offset)
+                self.animation_offset = 0
+            
+            # Check mouse lock state and update indicator
+            mouse_locked = is_mouse_locked()
+            if mouse_locked:
+                self.lock_indicator.setText("MOUSE: LOCKED 🔒")
+                self.lock_indicator.setStyleSheet(f"background-color: {self.colors['error']}; color: white; font-weight: bold; border-radius: 5px; padding: 8px; font-size: 14px;")
+            else:
+                self.lock_indicator.setText("MOUSE: UNLOCKED 🔓")
+                self.lock_indicator.setStyleSheet(f"background-color: {self.colors['success']}; color: white; font-weight: bold; border-radius: 5px; padding: 8px; font-size: 14px;")
+            
+            # Check AI editor state
+            ai_editor_active = os.path.exists("ai_editor.flag")
+            if ai_editor_active:
+                self.ai_indicator.setText("AI EDITOR: ON 🤖")
+                self.ai_indicator.setStyleSheet(f"background-color: {self.colors['info']}; color: white; font-weight: bold; border-radius: 5px; padding: 8px; font-size: 14px;")
+            else:
+                self.ai_indicator.setText("AI EDITOR: OFF")
+                self.ai_indicator.setStyleSheet(f"background-color: {self.colors['secondary_bg']}; color: {self.colors['text']}; font-weight: bold; border-radius: 5px; padding: 8px; font-size: 14px;")
+            
+            # If animation is active, update window position
+            if self.typing_animation_active:
+                # Update offset based on direction
+                self.animation_offset += self.animation_direction * self.animation_speed
+                
+                # Change direction if we hit the limits
+                if abs(self.animation_offset) >= self.animation_max_offset:
+                    self.animation_direction *= -1
+                
+                # Move the window up or down
+                self.move(self.x(), self.y() + (self.animation_direction * self.animation_speed))
+        except Exception as e:
+            # Don't log errors from animation - it could flood the logs
+            pass
+    
     def closeEvent(self, event):
         """Handle window close event"""
         global CALIBRATION_IN_PROGRESS, VOICE_CONTROL_PID
@@ -645,6 +1076,10 @@ class NoseTrackerGUIv2(QMainWindow):
         if hasattr(self, 'console_log_reader'):
             self.console_log_reader.stop()
         self.tracker.__del__()
+        
+        # Stop animation timer
+        self.animation_timer.stop()
+        
         event.accept()
 
 def main():
@@ -652,8 +1087,11 @@ def main():
     app.setApplicationName("Voxel v2")
     app.setApplicationDisplayName("Voxel v2")
     
-    # Get console log file from command line argument if provided
-    console_log_file = sys.argv[1] if len(sys.argv) > 1 else None
+    # Get log file paths from command line arguments
+    voice_log_file = sys.argv[1] if len(sys.argv) > 1 else "multi_voice_logs.txt"
+    console_log_file = sys.argv[2] if len(sys.argv) > 2 else None
+    
+    print(f"Starting GUI with voice log: {voice_log_file}, console log: {console_log_file}")
     
     # Set application icon
     try:
@@ -662,9 +1100,9 @@ def main():
     except:
         pass
     
-    window = NoseTrackerGUIv2(console_log_file=console_log_file)
+    window = NoseTrackerGUIv2(voice_log_file=voice_log_file, console_log_file=console_log_file)
     window.show()
     sys.exit(app.exec())
 
 if __name__ == '__main__':
-    main() 
+    main()
