@@ -2,6 +2,8 @@ import logging
 import os
 import sys
 import time
+import webbrowser
+import speech_recognition as sr
 
 import pyautogui
 
@@ -49,6 +51,11 @@ class PyAutoGUICommandExecutor:
             "exit": self.exit_program,
             "quit": self.exit_program,
             "stop listening": self.exit_program,
+
+            # Browser commands
+            "open browser": self.open_browser,
+            "start typing": self.start_typing,
+            "stop typing": self.stop_typing
         }
         
         logger.info("PyAutoGUI Command Executor initialized with simplified mouse commands")
@@ -108,6 +115,55 @@ class PyAutoGUICommandExecutor:
         """Perform right click at current position"""
         pyautogui.rightClick()
         logger.info(f"Right click at ({self.current_x}, {self.current_y})")
+        return True
+    
+    # Browser commands
+    def open_browser(self):
+        """Open the default browser"""
+        webbrowser.open_new('https://www.google.com')  # Opens default browser with google 
+        logger.info("Opened default browser with google")
+        return True
+    
+    def start_typing(self):
+        """Start typing in the browser"""
+        logger.info("Waiting for text input...")
+        print("Listening for text input... (2 seconds of silence to stop)")
+        
+        # Initialize speech recognizer
+        recognizer = sr.Recognizer()
+        
+        try:
+            with sr.Microphone() as source:
+                # Adjust for ambient noise
+                recognizer.adjust_for_ambient_noise(source)
+                
+                # Listen for speech with a 2-second timeout for silence
+                audio = recognizer.listen(source, timeout=5)
+                
+                # Recognize speech using Google Speech Recognition
+                text = recognizer.recognize_google(audio)
+                logger.info(f"Recognized text: {text}")
+                
+                # Type the recognized text
+                pyautogui.write(text)
+                logger.info(f"Typed text: {text}")
+                
+        except sr.WaitTimeoutError:
+            logger.info("No speech detected within timeout")
+            print("No speech detected, returning to command mode")
+        except sr.UnknownValueError:
+            logger.warning("Could not understand audio")
+            print("Could not understand audio, returning to command mode")
+        except sr.RequestError as e:
+            logger.error(f"Could not request results; {e}")
+            print(f"Error with speech recognition service: {e}")
+        
+        return True  # Return False to indicate we're done with this command
+    
+    def stop_typing(self):
+        """Stop typing in the browser"""
+        pyautogui.press('enter')
+        logger.info("Stopped typing")
         return True
     
     # Exit command
