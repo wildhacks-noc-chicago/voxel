@@ -4,7 +4,7 @@
 set -e
 
 # Display what's happening
-echo "Starting Voxel system with GUI v2..."
+echo "Starting Voxel system with GUI..."
 
 # Check if we have Python3
 if ! command -v python3 &> /dev/null; then
@@ -31,15 +31,15 @@ python3 -c "import librosa" 2>/dev/null || {
 
 # Run the semaphore cleanup script before starting to ensure clean state
 echo "Running semaphore cleanup before startup..."
-if [ -f "./cleanup_semaphores.py" ]; then
-    python3 ./cleanup_semaphores.py
+if [ -f "cleanup_semaphores.py" ]; then
+    python3 cleanup_semaphores.py
 else
     echo "Warning: semaphore cleanup script not found. Continuing without cleanup."
 fi
 
 # Create log files
-CONSOLE_LOG="voice_control_console.log"
-VOICE_LOG="multi_voice_logs.txt"
+CONSOLE_LOG="../voice_control_console.log"
+VOICE_LOG="../multi_voice_logs.txt"
 
 echo "Starting new session $(date)" > $CONSOLE_LOG
 echo "Starting new session $(date)" > $VOICE_LOG
@@ -63,9 +63,9 @@ echo "Started voice control with PID: $VOICE_CONTROL_PID"
 # Sleep for a moment to allow voice control to initialize
 sleep 1
 
-# Start the GUI v2
-echo "Starting GUI v2..."
-python3 gui_v2.py $VOICE_LOG_ABS $CONSOLE_LOG
+# Start the GUI
+echo "Starting GUI..."
+python3 gui.py $VICE_LOG_ABS $CONSOLE_LOG
 
 # ===== Enhanced Cleanup Process =====
 echo "=== Running Voxel Cleanup Process ==="
@@ -78,7 +78,7 @@ VOICE_COUNT=$(echo "$VOICE_PIDS" | grep -v "^$" | wc -l | tr -d ' ')
 
 # Find all lingering GUI processes
 echo "Finding all GUI processes..."
-GUI_PIDS=$(pgrep -f "python.*gui_v2.py|python3.*gui_v2.py")
+GUI_PIDS=$(pgrep -f "python.*gui.py|python3.*gui.py")
 GUI_COUNT=$(echo "$GUI_PIDS" | grep -v "^$" | wc -l | tr -d ' ')
 
 # Show summary
@@ -107,7 +107,7 @@ if [ $GUI_COUNT -gt 0 ]; then
 fi
 
 # Verify all processes were terminated
-REMAINING_PIDS=$(pgrep -f "python.*voice_control.py|python3.*voice_control.py|python.*gui_v2.py|python3.*gui_v2.py")
+REMAINING_PIDS=$(pgrep -f "python.*voice_control.py|python3.*voice_control.py|python.*gui.py|python3.*gui.py")
 if [ -z "$REMAINING_PIDS" ]; then
     echo "✅ All Voxel processes successfully terminated!"
 else
@@ -128,8 +128,8 @@ done
 
 # Run final semaphore cleanup
 echo "Running final semaphore cleanup..."
-if [ -f "./cleanup_semaphores.py" ]; then
-    python3 ./cleanup_semaphores.py
+if [ -f "cleanup_semaphores.py" ]; then
+    python3 cleanup_semaphores.py
 else
     echo "Warning: semaphore cleanup script not found. Continuing without cleanup."
 fi
