@@ -53,15 +53,25 @@ Voxel is an advanced hands-free control system that combines voice recognition a
    ./run_gui_v2.sh
    ```
 2. Voice commands:
+   - Mouse movement
+      - "Click" - Performs a click at the current cursor position
+      - "Scroll up/down" - Scrolls the page in the specified direction
+      - "Left click" - Performs a left-click operation
+      - "Right click" - Performs a right-click operation
+      - "Move cursor (right/left/up/down)" - Moves cursor in the specified direction
+      - "Lock" - Locks cursor in specified position
+      - "Unlock" - Undoes the lock
+   - Text
+      - "Start typing [text]" - Types the specified text
+      - "Stop typing" - Escapes typing operation
+      - "Clear text" - Clears text in the text field
+      - "Enter" - Simulates pressing the Enter key to submit or execute the input.
+   - AI Assistant
+      - "Enable AI" - Activates AI assistant which rewrites user-spoken text into more readable and coherent form by correcting grammatical and syntactic errors
+      - "Disable AI" - Deactivates the AI assistant
+   - Navigation
+      - "Open browser" - Opens a new browser tab
 
-   - "Click" - Performs a click at the current cursor position
-   - "Scroll up/down" - Scrolls the page in the specified direction
-   - "Type [text]" - Types the specified text
-   - "Double click" - Performs a double click operation
-   - "Right click" - Performs a right click operation
-   - "Drag" - Initiates drag operation
-   - "Drop" - Completes drag and drop operation
-   - Additional commands available in documentation
 3. Nose tracking:
 
    - Move your nose to control cursor position
