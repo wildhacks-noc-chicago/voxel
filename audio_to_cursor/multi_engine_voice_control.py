@@ -14,7 +14,7 @@ from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 from pynput.mouse import Button
 from pynput.mouse import Controller as MouseController
-from calibration import CalibrationManager, NoiseFilter, CalibrationError
+from audio_to_cursor.calibration import CalibrationManager, NoiseFilter, CalibrationError
 
 from audio_to_cursor.pyautogui_command_executor import PyAutoGUICommandExecutor
 

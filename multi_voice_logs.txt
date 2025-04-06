@@ -74,3 +74,15 @@
   Google: 'move the cursor to the right'
   Final interpretation: 'right'
 
+2025-04-05 22:47:59 | Multi-Engine Results:
+  Sphinx: 'the browser'
+  Google: 'open the browser'
+  Vosk: 'the browser'
+  Final interpretation: 'open browser'
+
+2025-04-05 22:48:07 | Multi-Engine Results:
+  Sphinx: 'and so he later'
+  Vosk: 'so exit'
+  Google: 'so exit'
+  Final interpretation: 'exit'
+
