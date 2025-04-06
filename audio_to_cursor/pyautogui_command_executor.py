@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import time
+import webbrowser
 
 import pyautogui
 
@@ -49,6 +50,11 @@ class PyAutoGUICommandExecutor:
             "exit": self.exit_program,
             "quit": self.exit_program,
             "stop listening": self.exit_program,
+
+            # Browser commands
+            "open browser": self.open_browser,
+            "start typing": self.start_typing,
+            "stop typing": self.stop_typing
         }
         
         logger.info("PyAutoGUI Command Executor initialized with simplified mouse commands")
@@ -108,6 +114,24 @@ class PyAutoGUICommandExecutor:
         """Perform right click at current position"""
         pyautogui.rightClick()
         logger.info(f"Right click at ({self.current_x}, {self.current_y})")
+        return True
+    
+    # Browser commands
+    def open_browser(self):
+        """Open the default browser"""
+        webbrowser.open_new('https://www.google.com')  # Opens default browser with google 
+        logger.info("Opened default browser with google")
+        return True
+    
+    def start_typing(self):
+        """Start typing in the browser"""
+        logger.info(f"Waiting for typing to start...")
+        return False
+    
+    def stop_typing(self):
+        """Stop typing in the browser"""
+        pyautogui.press('enter')
+        logger.info("Stopped typing")
         return True
     
     # Exit command
