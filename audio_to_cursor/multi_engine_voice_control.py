@@ -8,6 +8,7 @@ import threading
 import time
 
 import google.generativeai as genai
+import numpy as np
 import speech_recognition as sr
 from pyautogui_command_executor import PyAutoGUICommandExecutor
 from pynput.keyboard import Controller as KeyboardController
