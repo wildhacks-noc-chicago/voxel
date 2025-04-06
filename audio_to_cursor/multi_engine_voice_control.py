@@ -8,11 +8,13 @@ import threading
 import time
 
 import google.generativeai as genai
+import numpy as np
 import speech_recognition as sr
 from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 from pynput.mouse import Button
 from pynput.mouse import Controller as MouseController
+from calibration import CalibrationManager, NoiseFilter, CalibrationError
 
 from audio_to_cursor.pyautogui_command_executor import PyAutoGUICommandExecutor
 
@@ -49,6 +51,10 @@ class MultiEngineSpeechRecognition:
         self.recognizer = recognizer
         self.command_timeout = command_timeout
         self.results_queue = queue.Queue()
+
+        # Initialize calibration
+        self.calibration_manager = CalibrationManager()
+        self.noise_filter = NoiseFilter(self.calibration_manager)
         
         # Check which engines are available
         self.engines_available = {
@@ -60,6 +66,46 @@ class MultiEngineSpeechRecognition:
         logger.info(f"Available engines: Google:{self.engines_available['google']}, "
                    f"Sphinx:{self.engines_available['sphinx']}, "
                    f"Vosk:{self.engines_available['vosk']}")
+        
+        # Handle initial calibration
+        self.initialize_calibration()
+    
+    def initialize_calibration(self):
+        """Initialize calibration once during startup"""
+        if os.path.exists(self.calibration_manager.calibration_file):
+            print("\nExisting calibration found.")
+            while True:
+                try:
+                    calibrate = input("Would you like to recalibrate? (y/n): ").lower()
+                    if calibrate in ['y', 'n']:
+                        break
+                    print("Please enter 'y' for yes or 'n' for no.")
+                except Exception as e:
+                    logger.error(f"Error getting calibration input: {e}")
+                    return False
+        else:
+            print("\nNo calibration found.")
+            calibrate = 'y'
+
+        if calibrate == 'y':
+            print("\nRunning calibration process...")
+            try:
+                if not self.calibration_manager.calibrate():
+                    logger.warning("Calibration failed. Voice recognition may be less accurate.")
+                    return False
+                logger.info("Calibration completed successfully")
+                return True
+            except Exception as e:
+                logger.error(f"Calibration error: {e}")
+                return False
+        else:
+            # Try to load existing calibration
+            if self.noise_filter.load_noise_profile():
+                logger.info("Loaded existing calibration")
+                return True
+            else:
+                logger.warning("Failed to load existing calibration")
+                return False
     
     def _check_sphinx_available(self):
         """Check if Sphinx is available"""
@@ -245,49 +291,72 @@ class MultiEngineSpeechRecognition:
     def listen_and_recognize(self):
         """Listen for voice input and recognize using multiple engines"""
         with sr.Microphone() as source:
+            print("Listening...")
             self.recognizer.adjust_for_ambient_noise(source)
             try:
                 audio = self.recognizer.listen(source, timeout=self.command_timeout)
                 logger.info("Audio captured, processing with multiple engines...")
+
+                # Apply noise reduction if calibration exists
+                if self.noise_filter.noise_profile is not None:
+                    try:
+                        # Convert audio to numpy array
+                        audio_data = np.frombuffer(audio.get_raw_data(), dtype=np.int16)
+                        audio_data = audio_data.astype(np.float32) / 32768.0  # Convert to float32
+
+                        # Apply noise reduction
+                        filtered_audio = self.noise_filter.filter_audio(audio_data)
+
+                        # Convert back to audio data
+                        filtered_audio = (filtered_audio * 32768.0).astype(np.int16)
+                        audio = sr.AudioData(
+                            filtered_audio.tobytes(),
+                            sample_rate=self.calibration_manager.sample_rate,
+                            sample_width=2  # 16-bit audio
+                        )
+                        logger.info("Applied noise reduction to audio")
+                    except Exception as e:
+                        logger.error(f"Error applying noise reduction: {e}")
+                        # Continue with original audio if noise reduction fails
+
             except sr.WaitTimeoutError:
                 logger.info("No speech detected within timeout")
                 return None
-        
-        # Clear the results queue
-        while not self.results_queue.empty():
-            self.results_queue.get()
-        
-        # Start recognition threads for each engine
-        threads = []
-        
-        # Always use Google
-        t_google = threading.Thread(target=self.recognize_with_google, args=(audio,))
-        threads.append(t_google)
-        
-        # Use Sphinx if available
-        if self.engines_available["sphinx"]:
-            t_sphinx = threading.Thread(target=self.recognize_with_sphinx, args=(audio,))
-            threads.append(t_sphinx)
-        
-        # Use Vosk if available
-        if self.engines_available["vosk"]:
-            t_vosk = threading.Thread(target=self.recognize_with_vosk, args=(audio,))
-            threads.append(t_vosk)
-        
-        # Start all threads
-        for t in threads:
-            t.start()
-        
-        # Wait for all threads to complete
-        for t in threads:
-            t.join()
-        
-        # Collect results
-        results = []
-        while not self.results_queue.empty():
-            results.append(self.results_queue.get())
-        
-        return results
+            # Clear the results queue
+            while not self.results_queue.empty():
+                self.results_queue.get()
+            
+            # Start recognition threads for each engine
+            threads = []
+            
+            # Always use Google
+            t_google = threading.Thread(target=self.recognize_with_google, args=(audio,))
+            threads.append(t_google)
+            
+            # Use Sphinx if available
+            if self.engines_available["sphinx"]:
+                t_sphinx = threading.Thread(target=self.recognize_with_sphinx, args=(audio,))
+                threads.append(t_sphinx)
+            
+            # Use Vosk if available
+            if self.engines_available["vosk"]:
+                t_vosk = threading.Thread(target=self.recognize_with_vosk, args=(audio,))
+                threads.append(t_vosk)
+            
+            # Start all threads
+            for t in threads:
+                t.start()
+            
+            # Wait for all threads to complete
+            for t in threads:
+                t.join()
+            
+            # Collect results
+            results = []
+            while not self.results_queue.empty():
+                results.append(self.results_queue.get())
+            
+            return results
 
 
 class GeminiIntentMapper:
