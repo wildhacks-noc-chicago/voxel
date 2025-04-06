@@ -74,3 +74,23 @@
   Google: 'move the cursor to the right'
   Final interpretation: 'right'
 
+2025-04-05 22:00:01 | Multi-Engine Results:
+  Sphinx: 'but failed'
+  Vosk: 'oh'
+  Google: 'hello'
+  Final interpretation: 'up'
+
+2025-04-05 22:00:13 | Multi-Engine Results:
+  Sphinx: 'oh'
+  Final interpretation: 'up'
+
+2025-04-05 22:00:29 | Multi-Engine Results:
+  Sphinx: 'lake como is'
+  Vosk: 'click mouse'
+  Google: 'click mouse'
+  Final interpretation: 'click'
+
+2025-04-05 22:35:49 | Multi-Engine Results:
+  Sphinx: 'oh'
+  Final interpretation: 'up'
+
