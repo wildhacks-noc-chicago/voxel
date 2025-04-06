@@ -47,10 +47,11 @@ def load_env_file():
 class MultiEngineSpeechRecognition:
     """Handles speech recognition using multiple engines in parallel"""
     
-    def __init__(self, recognizer, command_timeout=5):
+    def __init__(self, recognizer, command_timeout=5, use_old_calibration=False):
         self.recognizer = recognizer
         self.command_timeout = command_timeout
         self.results_queue = queue.Queue()
+        self.use_old_calibration = use_old_calibration
 
         # Initialize calibration
         self.calibration_manager = CalibrationManager()
@@ -72,40 +73,29 @@ class MultiEngineSpeechRecognition:
     
     def initialize_calibration(self):
         """Initialize calibration once during startup"""
-        if os.path.exists(self.calibration_manager.calibration_file):
-            print("\nExisting calibration found.")
-            while True:
-                try:
-                    calibrate = input("Would you like to recalibrate? (y/n): ").lower()
-                    if calibrate in ['y', 'n']:
-                        break
-                    print("Please enter 'y' for yes or 'n' for no.")
-                except Exception as e:
-                    logger.error(f"Error getting calibration input: {e}")
-                    return False
-        else:
-            print("\nNo calibration found.")
-            calibrate = 'y'
-
-        if calibrate == 'y':
-            print("\nRunning calibration process...")
-            try:
-                if not self.calibration_manager.calibrate():
-                    logger.warning("Calibration failed. Voice recognition may be less accurate.")
-                    return False
-                logger.info("Calibration completed successfully")
-                return True
-            except Exception as e:
-                logger.error(f"Calibration error: {e}")
-                return False
-        else:
-            # Try to load existing calibration
+        if os.path.exists(self.calibration_manager.calibration_file) and self.use_old_calibration:
+            print("\nUsing existing calibration...")
             if self.noise_filter.load_noise_profile():
                 logger.info("Loaded existing calibration")
                 return True
             else:
-                logger.warning("Failed to load existing calibration")
+                logger.warning("Failed to load existing calibration, running new calibration...")
+                return self._run_calibration()
+        else:
+            print("\nRunning new calibration...")
+            return self._run_calibration()
+    
+    def _run_calibration(self):
+        """Run the calibration process"""
+        try:
+            if not self.calibration_manager.calibrate():
+                logger.warning("Calibration failed. Voice recognition may be less accurate.")
                 return False
+            logger.info("Calibration completed successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Calibration error: {e}")
+            return False
     
     def _check_sphinx_available(self):
         """Check if Sphinx is available"""
@@ -595,12 +585,12 @@ class GeminiIntentMapper:
 class MultiEngineVoiceControl:
     """Main class for voice control using multiple speech recognition engines"""
     
-    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt", move_distance=100):
+    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt", move_distance=100, use_old_calibration=False):
         # Load environment variables
         load_env_file()
         
-        # Set up logging
-        self.log_file = log_file
+        # Set up logging with path in audio_to_cursor directory
+        self.log_file = os.path.join(os.path.dirname(__file__), log_file)
         
         # Check if PyAutoGUI command executor is available
         self.pyautogui_executor = None
@@ -613,8 +603,6 @@ class MultiEngineVoiceControl:
                 print(f"Warning: Failed to initialize PyAutoGUI command executor: {e}")
                 print("Falling back to pynput for mouse and keyboard control.")
         
-    
-                
         # Get API key for Gemini
         self.api_key = os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
@@ -629,7 +617,8 @@ class MultiEngineVoiceControl:
             
         self.speech_module = MultiEngineSpeechRecognition(
             sr.Recognizer(),
-            command_timeout=command_timeout
+            command_timeout=command_timeout,
+            use_old_calibration=use_old_calibration
         )
         
         # Get all available commands
