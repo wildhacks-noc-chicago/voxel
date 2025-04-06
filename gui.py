@@ -446,7 +446,7 @@ class NoseTrackerGUIv2(QMainWindow):
         self.sensitivity_slider = QSlider(Qt.Orientation.Horizontal)
         self.sensitivity_slider.setMinimum(1)
         self.sensitivity_slider.setMaximum(10)
-        self.sensitivity_slider.setValue(8)
+        self.sensitivity_slider.setValue(4)
         self.sensitivity_slider.valueChanged.connect(self.update_sensitivity)
         
         sensitivity_layout.addWidget(sensitivity_label)
