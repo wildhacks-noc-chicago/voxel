@@ -262,7 +262,8 @@ class PyAutoGUICommandExecutor:
 
             # Browser commands
             "open browser": self.open_browser,
-            "enter": self.enter
+            "enter": self.enter,
+            "clear text": self.clear_text  # Add new command
         }
         
         logger.info("PyAutoGUI Command Executor initialized with simplified mouse commands")
@@ -764,6 +765,28 @@ class PyAutoGUICommandExecutor:
         logger.info("Pressed enter")
         play_sound_effect()  # Play sound for successful command
         return True
+    
+    def clear_text(self):
+        """Clear all text by selecting all and deleting"""
+        logger.info("Clearing text")
+        try:
+            # Select all text (Cmd+A on macOS, Ctrl+A on Windows/Linux)
+            if sys.platform == "darwin":
+                pyautogui.hotkey("command", "a")
+            else:
+                pyautogui.hotkey("ctrl", "a")
+            
+            # Delete selected text
+            pyautogui.press("delete")
+            
+            # Play success sound
+            play_sound_effect()
+            
+            logger.info("Text cleared successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing text: {e}")
+            return False
     
     # Exit command
     def exit_program(self):
