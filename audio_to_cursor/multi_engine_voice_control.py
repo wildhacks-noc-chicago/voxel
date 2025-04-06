@@ -478,9 +478,9 @@ class GeminiIntentMapper:
             "down": ["move down", "go down", "cursor down", "shift down"],
             
             # Click commands
-            "click": ["mouse click", "press click", "do click", "quick click"],
-            "left click": ["mouse click", "press click", "left mouse click"],
-            "right click": ["right mouse click", "context click", "secondary click"],
+            "click": ["mouse click", "press click", "do click", "quick click", "tap here", "select this", "press here", "click here", "select", "tap", "press button", "activate button"],
+            "left click": ["mouse click", "press click", "left mouse click", "normal click", "primary click", "main click", "standard click", "single click"],
+            "right click": ["right mouse click", "context click", "secondary click", "context menu", "menu click", "alternative click", "second button click"],
             
             # Lock commands
             "lock": ["lock mouse", "freeze mouse", "stop mouse", "lock cursor", "freeze cursor"],
@@ -497,12 +497,24 @@ class GeminiIntentMapper:
             # Browser commands
             "open browser": ["launch browser", "start browser", "open web", "launch internet", "web browser"],
             
+            # Keyboard commands
+            "enter": ["press enter", "hit enter", "submit", "confirm", "return key", "go", "execute", "press return", "hit return", "send", "enter key"],
+            
             # System commands
             "exit": ["close program", "exit program", "quit program", "terminate"],
             "quit": ["exit", "close program", "stop program"],
 
             # Delete
-            "clear text": ["clear text", "clear search bar", "delete text", "erase text", "clear text field", "delete text field", "erase text field"]
+            "clear text": ["clear text", "clear search bar", "delete text", "erase text", "clear text field", "delete text field", "erase text field"],
+            
+            # Scroll commands
+            "scroll up": ["scroll page up", "move page up", "scroll upward", "scroll page upward"],
+            "scroll down": ["scroll page down", "move page down", "scroll downward", "scroll page downward"],
+            "page up": ["go page up", "move up page", "go up a page", "previous page"],
+            "page down": ["go page down", "move down page", "go down a page", "next page"],
+            "keep scrolling up": ["continue scrolling up", "scroll up continuously", "keep scrolling upward"],
+            "keep scrolling down": ["continue scrolling down", "scroll down continuously", "keep scrolling downward"],
+            "stop scrolling": ["halt scrolling", "end scrolling", "pause scrolling", "cease scrolling"]
         }
         
         # Create reverse alias mapping for lookup
@@ -846,10 +858,20 @@ class GeminiIntentMapper:
             "open browser": "open the browser",
             "start typing": "start typing in the browser",
             "stop typing": "stop typing in the browser",
+            "enter": "press the Enter/Return key to submit or confirm",
 
             #Lock Commands
             "lock": "lock mouse movement",
             "unlock": "unlock mouse movement",
+            
+            # Scroll commands
+            "scroll up": "scroll the page upward",
+            "scroll down": "scroll the page downward",
+            "page up": "move up a full page",
+            "page down": "move down a full page",
+            "keep scrolling up": "start scrolling upward continuously",
+            "keep scrolling down": "start scrolling downward continuously",
+            "stop scrolling": "stop continuous scrolling",
 
             # Website shortcuts
             **{f"go to {site}": f"Navigate to the {site} website" for site in self.shortcuts.keys()}
@@ -1142,7 +1164,7 @@ class MultiEngineVoiceControl:
                             logger.info("No text recognized in typing mode")
                             return None, True
                     except Exception as e:
-                        logger.error(f"Error using Faster Whisper in typing mode: {e}")
+                        logger.error(f"Error using Faster Whisper for typing: {e}")
                 
                 # Fall back to Google if Whisper fails or isn't available
                 try:
@@ -1178,7 +1200,7 @@ class MultiEngineVoiceControl:
             
         # If in typing mode, use a simplified recognition approach
         if typing_mode:
-            logger.info("In typing mode, using optimized recognition process")
+            logger.info("In typing mode, using simplified recognition process")
             return self._process_typing_input()
         
         # Not in typing mode - use the full multi-engine pipeline

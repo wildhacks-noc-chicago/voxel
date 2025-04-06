@@ -191,6 +191,10 @@ class PyAutoGUICommandExecutor:
         self.typing_thread = None
         self.stop_typing_event = threading.Event()
         
+        # Continuous scrolling thread
+        self.scroll_thread = None
+        self.stop_scroll_event = threading.Event()
+        
         # Speech recognizer as instance variable to better manage its lifecycle
         self.recognizer = None
         
@@ -255,6 +259,15 @@ class PyAutoGUICommandExecutor:
             "AI editor enabled": self.enable_ai_editor,
             "AI editor disabled": self.disable_ai_editor,
             
+            # Scroll commands
+            "scroll up": self.scroll_up,
+            "scroll down": self.scroll_down,
+            "page up": self.page_up,
+            "page down": self.page_down,
+            "keep scrolling up": self.start_scrolling_up,
+            "keep scrolling down": self.start_scrolling_down,
+            "stop scrolling": self.stop_scrolling,
+            
             # Exit command
             "exit": self.exit_program,
             "quit": self.exit_program,
@@ -288,6 +301,10 @@ class PyAutoGUICommandExecutor:
             # Stop the typing thread if it's running
             if hasattr(self, 'stop_typing_event'):
                 self.stop_typing_event.set()
+                
+            # Stop the scroll thread if it's running
+            if hasattr(self, 'stop_scroll_event'):
+                self.stop_scroll_event.set()
                 
             # Clean up whisper model if initialized
             if hasattr(self, 'whisper_model') and self.whisper_model:
@@ -504,6 +521,127 @@ class PyAutoGUICommandExecutor:
         logger.info(f"Right click at ({self.current_x}, {self.current_y})")
         play_sound_effect()  # Play sound for successful command
         return True
+    
+    # Scroll commands
+    def scroll_up(self):
+        """Scroll up"""
+        if is_mouse_locked():
+            print("🔒 Mouse is locked. Say 'unlock' to enable movement.")
+            return True
+            
+        # In pyautogui, positive values scroll up
+        pyautogui.scroll(10)  # Adjust this value to control scroll speed
+        logger.info("Scrolled up")
+        play_sound_effect()  # Play sound for successful command
+        return True
+    
+    def scroll_down(self):
+        """Scroll down"""
+        if is_mouse_locked():
+            print("🔒 Mouse is locked. Say 'unlock' to enable movement.")
+            return True
+            
+        # In pyautogui, negative values scroll down
+        pyautogui.scroll(-10)  # Adjust this value to control scroll speed
+        logger.info("Scrolled down")
+        play_sound_effect()  # Play sound for successful command
+        return True
+    
+    def page_up(self):
+        """Scroll up a full page"""
+        if is_mouse_locked():
+            print("🔒 Mouse is locked. Say 'unlock' to enable movement.")
+            return True
+            
+        # Use the Page Up key to scroll up a full page
+        pyautogui.press('pageup')
+        logger.info("Page up")
+        play_sound_effect()
+        return True
+    
+    def page_down(self):
+        """Scroll down a full page"""
+        if is_mouse_locked():
+            print("🔒 Mouse is locked. Say 'unlock' to enable movement.")
+            return True
+            
+        # Use the Page Down key to scroll down a full page
+        pyautogui.press('pagedown')
+        logger.info("Page down")
+        play_sound_effect()
+        return True
+    
+    def _scroll_thread_function(self, direction="up"):
+        """Thread function for continuous scrolling"""
+        scroll_value = 1 if direction == "up" else -1
+        logger.info(f"Starting continuous scrolling {direction}")
+        print(f"🔄 Continuous scrolling {direction}. Say 'stop scrolling' to stop.")
+        
+        try:
+            # Play sound to indicate start of continuous scrolling
+            play_sound_effect()
+            
+            # Continuous scroll until stopped
+            while not self.stop_scroll_event.is_set():
+                pyautogui.scroll(scroll_value)
+                time.sleep(0.1)  # Adjust delay between scrolls
+        except Exception as e:
+            logger.error(f"Error in scroll thread: {e}")
+        finally:
+            logger.info("Continuous scrolling stopped")
+            print("Continuous scrolling stopped")
+    
+    def start_scrolling_up(self):
+        """Start continuous scrolling up"""
+        if is_mouse_locked():
+            print("🔒 Mouse is locked. Say 'unlock' to enable movement.")
+            return True
+            
+        # Stop any existing scroll thread
+        self.stop_scrolling()
+        
+        # Reset event
+        self.stop_scroll_event.clear()
+        
+        # Start new thread
+        logger.info("Starting continuous scroll up")
+        self.scroll_thread = threading.Thread(target=self._scroll_thread_function, args=("up",))
+        self.scroll_thread.daemon = True
+        self.scroll_thread.start()
+        
+        return True
+    
+    def start_scrolling_down(self):
+        """Start continuous scrolling down"""
+        if is_mouse_locked():
+            print("🔒 Mouse is locked. Say 'unlock' to enable movement.")
+            return True
+            
+        # Stop any existing scroll thread
+        self.stop_scrolling()
+        
+        # Reset event
+        self.stop_scroll_event.clear()
+        
+        # Start new thread
+        logger.info("Starting continuous scroll down")
+        self.scroll_thread = threading.Thread(target=self._scroll_thread_function, args=("down",))
+        self.scroll_thread.daemon = True
+        self.scroll_thread.start()
+        
+        return True
+    
+    def stop_scrolling(self):
+        """Stop continuous scrolling"""
+        if hasattr(self, 'scroll_thread') and self.scroll_thread and self.scroll_thread.is_alive():
+            logger.info("Stopping continuous scrolling")
+            self.stop_scroll_event.set()
+            self.scroll_thread.join(timeout=1.0)
+            play_sound_effect()  # Play sound for stopping
+            return True
+        else:
+            logger.info("No scrolling to stop")
+            return True
     
     # Browser commands
     def open_browser(self):
@@ -794,6 +932,10 @@ class PyAutoGUICommandExecutor:
         # First stop typing if active
         if is_typing_mode_active():
             self.stop_typing()
+            
+        # Stop scrolling if active
+        if hasattr(self, 'scroll_thread') and self.scroll_thread and self.scroll_thread.is_alive():
+            self.stop_scrolling()
             
         logger.info("Exit command received")
         print("Exiting program...")
