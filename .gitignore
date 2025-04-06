@@ -5,7 +5,7 @@ multi_voice_logs.txt
 audio_to_cursor/calibration.json
 audio_to_cursor/calibration_data
 whisper_models/
-
+*.flag
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -499,7 +499,10 @@ class GeminiIntentMapper:
             
             # System commands
             "exit": ["close program", "exit program", "quit program", "terminate"],
-            "quit": ["exit", "close program", "stop program"]
+            "quit": ["exit", "close program", "stop program"],
+
+            # Delete
+            "clear text": ["clear text", "clear search bar", "delete text", "erase text", "clear text field", "delete text field", "erase text field"]
         }
         
         # Create reverse alias mapping for lookup
