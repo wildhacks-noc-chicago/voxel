@@ -9,11 +9,12 @@ import time
 
 import google.generativeai as genai
 import speech_recognition as sr
-from pyautogui_command_executor import PyAutoGUICommandExecutor
 from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 from pynput.mouse import Button
 from pynput.mouse import Controller as MouseController
+
+from audio_to_cursor.pyautogui_command_executor import PyAutoGUICommandExecutor
 
 # Configure logging
 logging.basicConfig(
