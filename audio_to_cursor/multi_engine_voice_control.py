@@ -51,10 +51,12 @@ def load_env_file():
 class MultiEngineSpeechRecognition:
     """Handles speech recognition using multiple engines in parallel"""
     
-    def __init__(self, recognizer, command_timeout=5):
+    def __init__(self, recognizer, command_timeout=5, use_old_calibration=False):
         self.recognizer = recognizer
         self.command_timeout = command_timeout
         self.results_queue = queue.Queue()
+        self.use_old_calibration = use_old_calibration
+        logger.info(f"Initializing MultiEngineSpeechRecognition with use_old_calibration={use_old_calibration}")
 
         # Initialize calibration
         self.calibration_manager = CalibrationManager()
@@ -70,6 +72,43 @@ class MultiEngineSpeechRecognition:
         logger.info(f"Available engines: Google:{self.engines_available['google']}, "
                    f"Vosk:{self.engines_available['vosk']}, "
                    f"Faster Whisper:{self.engines_available['faster_whisper']}")
+        
+        # Handle initial calibration
+        self.initialize_calibration()
+
+    def initialize_calibration(self):
+        """Initialize calibration once during startup"""
+        calibration_exists = os.path.exists(self.calibration_manager.calibration_file)
+        logger.info(f"Calibration file exists: {calibration_exists}, use_old_calibration: {self.use_old_calibration}")
+        
+        if calibration_exists and self.use_old_calibration:
+            print("\nUsing existing calibration...")
+            if self.noise_filter.load_noise_profile():
+                logger.info("Successfully loaded existing calibration")
+                return True
+            else:
+                logger.warning("Failed to load existing calibration, running new calibration...")
+                return self._run_calibration()
+        else:
+            if calibration_exists:
+                logger.info("Calibration exists but use_old_calibration is False, running new calibration...")
+            else:
+                logger.info("No calibration found, running new calibration...")
+            return self._run_calibration()
+
+    def _run_calibration(self):
+        """Run the calibration process"""
+        try:
+            logger.info("Starting calibration process...")
+            if not self.calibration_manager.calibrate():
+                logger.warning("Calibration failed. Voice recognition may be less accurate.")
+                return False
+            logger.info("Calibration completed successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Calibration error: {e}")
+            return False
+
     
     def _check_vosk_available(self):
         """Check if Vosk is available"""
@@ -594,12 +633,15 @@ class GeminiIntentMapper:
 class MultiEngineVoiceControl:
     """Main class for voice control using multiple speech recognition engines"""
     
-    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt", move_distance=100):
+    def __init__(self, config_file="voice_config.json", log_file="multi_voice_logs.txt", move_distance=100, use_old_calibration=False):
         # Load environment variables
         load_env_file()
         
         # Set up logging
         self.log_file = log_file
+
+        # Set up logging with path in audio_to_cursor directory
+        self.log_file = os.path.join(os.path.dirname(__file__), log_file)
         
         # Check if PyAutoGUI command executor is available
         self.pyautogui_executor = None
@@ -628,7 +670,8 @@ class MultiEngineVoiceControl:
             
         self.speech_module = MultiEngineSpeechRecognition(
             sr.Recognizer(),
-            command_timeout=command_timeout
+            command_timeout=command_timeout,
+            use_old_calibration=use_old_calibration
         )
         
         # Get all available commands
