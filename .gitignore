@@ -185,3 +185,5 @@ cython_debug/
 # Zip files
 *.zip
 vosk-model*/
+
+*/multi_voice_logs.txt
