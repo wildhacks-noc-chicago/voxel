@@ -354,7 +354,29 @@ class NoseTracker:
         return frame
 
     def __del__(self):
-        self.cap.release()
-        if not self.headless:
-            cv2.destroyAllWindows()
-        self.face_mesh.close() 
+        """Clean up resources when the object is garbage collected."""
+        try:
+            # Stop the video capture if it exists
+            if hasattr(self, 'cap') and self.cap is not None:
+                self.cap.release()
+                
+            # Destroy any OpenCV windows if not in headless mode
+            if hasattr(self, 'headless') and not self.headless:
+                try:
+                    import cv2
+                    cv2.destroyAllWindows()
+                except:
+                    pass
+                
+            # Close the face mesh if it exists and hasn't already been closed
+            if hasattr(self, 'face_mesh') and self.face_mesh is not None:
+                try:
+                    # Check if the MediaPipe graph still exists before closing
+                    if hasattr(self.face_mesh, '_graph') and self.face_mesh._graph is not None:
+                        self.face_mesh.close()
+                except (ValueError, AttributeError):
+                    # Ignore errors if the face_mesh is already closed or being finalized
+                    pass
+        except Exception as e:
+            # Just log the error - can't do much during garbage collection
+            pass 

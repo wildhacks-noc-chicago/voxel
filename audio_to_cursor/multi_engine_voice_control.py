@@ -70,7 +70,7 @@ class MultiEngineSpeechRecognition:
         self.engines_available = {
             "google": True,  # Google is always available through the API
             "vosk": self._check_vosk_available(),
-            "faster_whisper": self._check_faster_whisper_available()
+            "faster_whisper": False,#self._check_faster_whisper_available()
         }
         
         logger.info(f"Available engines: Google:{self.engines_available['google']}, "
