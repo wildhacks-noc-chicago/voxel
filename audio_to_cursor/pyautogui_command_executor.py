@@ -7,6 +7,8 @@ import speech_recognition as sr
 
 import pyautogui
 
+TYPING_TIMEOUT = 2
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -43,7 +45,6 @@ class PyAutoGUICommandExecutor:
             
             # Mouse click commands
             "click": self.left_click,
-            "enter": self.left_click,
             "left click": self.left_click,
             "right click": self.right_click,
             
@@ -55,7 +56,7 @@ class PyAutoGUICommandExecutor:
             # Browser commands
             "open browser": self.open_browser,
             "start typing": self.start_typing,
-            "stop typing": self.stop_typing
+            "enter": self.enter
         }
         
         logger.info("PyAutoGUI Command Executor initialized with simplified mouse commands")
@@ -127,7 +128,7 @@ class PyAutoGUICommandExecutor:
     def start_typing(self):
         """Start typing in the browser"""
         logger.info("Waiting for text input...")
-        print("Listening for text input... (2 seconds of silence to stop)")
+        print(f"Listening for text input... ({TYPING_TIMEOUT} seconds of silence to stop)")
         
         # Initialize speech recognizer
         recognizer = sr.Recognizer()
@@ -138,7 +139,7 @@ class PyAutoGUICommandExecutor:
                 recognizer.adjust_for_ambient_noise(source)
                 
                 # Listen for speech with a 2-second timeout for silence
-                audio = recognizer.listen(source, timeout=5)
+                audio = recognizer.listen(source, timeout=TYPING_TIMEOUT)
                 
                 # Recognize speech using Google Speech Recognition
                 text = recognizer.recognize_google(audio)
@@ -160,10 +161,10 @@ class PyAutoGUICommandExecutor:
         
         return True  # Return False to indicate we're done with this command
     
-    def stop_typing(self):
+    def enter(self):
         """Stop typing in the browser"""
         pyautogui.press('enter')
-        logger.info("Stopped typing")
+        logger.info("Pressed enter")
         return True
     
     # Exit command

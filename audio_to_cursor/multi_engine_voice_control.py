@@ -469,7 +469,6 @@ class GeminiIntentMapper:
             
             # Mouse click commands
             "click": "click the mouse",
-            "enter": "click the mouse",
             "left click": "left click the mouse",
             "right click": "right click the mouse",
             
@@ -482,6 +481,7 @@ class GeminiIntentMapper:
             "open browser": "open the browser",
             "start typing": "start typing in the browser",
             "stop typing": "stop typing in the browser",
+            "enter": "enter",
             
             # Website shortcuts
             **{f"go to {site}": f"Navigate to the {site} website" for site in self.shortcuts.keys()}

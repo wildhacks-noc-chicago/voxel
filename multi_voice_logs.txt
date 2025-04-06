@@ -41,3 +41,67 @@
   Vosk: 'click'
   Final interpretation: 'click'
 
+2025-04-05 21:47:13 | Multi-Engine Results:
+  Sphinx: 'oh when they're frozen feet'
+  Vosk: 'open their browser'
+  Google: 'open the browser'
+  Final interpretation: 'open browser'
+
+2025-04-05 21:47:17 | Multi-Engine Results:
+  Sphinx: 'start typing'
+  Vosk: 'start typing'
+  Google: 'start typing'
+  Final interpretation: 'start typing'
+
+2025-04-05 21:51:28 | Multi-Engine Results:
+  Sphinx: 'open the browser'
+  Vosk: 'open the browser'
+  Google: 'open the browser'
+  Final interpretation: 'open browser'
+
+2025-04-05 21:51:36 | Multi-Engine Results:
+  Sphinx: 'start typing'
+  Vosk: 'start typing'
+  Google: 'start typing'
+  Final interpretation: 'start typing'
+
+2025-04-05 21:51:46 | Multi-Engine Results:
+  Sphinx: 'start typing'
+  Google: 'start typing'
+  Vosk: 'start typing'
+  Final interpretation: 'start typing'
+
+2025-04-05 21:52:01 | Multi-Engine Results:
+  Sphinx: 'if'
+  Final interpretation: 'up'
+
+2025-04-05 21:53:27 | Multi-Engine Results:
+  Sphinx: 'open the browser'
+  Google: 'open the browser'
+  Vosk: 'open the browser'
+  Final interpretation: 'open browser'
+
+2025-04-05 21:53:31 | Multi-Engine Results:
+  Sphinx: 'start fighting'
+  Google: 'start typing'
+  Vosk: 'start typing'
+  Final interpretation: 'start typing'
+
+2025-04-05 21:53:41 | Multi-Engine Results:
+  Sphinx: 'start typing'
+  Vosk: 'start typing'
+  Google: 'start typing'
+  Final interpretation: 'start typing'
+
+2025-04-05 21:53:50 | Multi-Engine Results:
+  Sphinx: 'start typing'
+  Google: 'start typing'
+  Vosk: 'start typing'
+  Final interpretation: 'start typing'
+
+2025-04-05 21:54:15 | Multi-Engine Results:
+  Sphinx: 'and tired'
+  Vosk: 'enter'
+  Google: 'enter'
+  Final interpretation: 'enter'
+
