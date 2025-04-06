@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import webbrowser
+import speech_recognition as sr
 
 import pyautogui
 
@@ -125,8 +126,39 @@ class PyAutoGUICommandExecutor:
     
     def start_typing(self):
         """Start typing in the browser"""
-        logger.info(f"Waiting for typing to start...")
-        return False
+        logger.info("Waiting for text input...")
+        print("Listening for text input... (2 seconds of silence to stop)")
+        
+        # Initialize speech recognizer
+        recognizer = sr.Recognizer()
+        
+        try:
+            with sr.Microphone() as source:
+                # Adjust for ambient noise
+                recognizer.adjust_for_ambient_noise(source)
+                
+                # Listen for speech with a 2-second timeout for silence
+                audio = recognizer.listen(source, timeout=5)
+                
+                # Recognize speech using Google Speech Recognition
+                text = recognizer.recognize_google(audio)
+                logger.info(f"Recognized text: {text}")
+                
+                # Type the recognized text
+                pyautogui.write(text)
+                logger.info(f"Typed text: {text}")
+                
+        except sr.WaitTimeoutError:
+            logger.info("No speech detected within timeout")
+            print("No speech detected, returning to command mode")
+        except sr.UnknownValueError:
+            logger.warning("Could not understand audio")
+            print("Could not understand audio, returning to command mode")
+        except sr.RequestError as e:
+            logger.error(f"Could not request results; {e}")
+            print(f"Error with speech recognition service: {e}")
+        
+        return True  # Return False to indicate we're done with this command
     
     def stop_typing(self):
         """Stop typing in the browser"""
