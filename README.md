@@ -110,6 +110,9 @@ The PyQt6-based interface provides real-time feedback on tracking quality, recog
 
 The application is designed to be lightweight and compatible with various operating systems. Our semaphore cleanup system ensures reliable performance across multiple sessions.
 
+## Technical Diagrams
+See [Architecture Diagrams](assets/architecture_diagram.md) for detailed technical diagrams.
+
 ## Packages Used
 
 ### Nose Tracking
