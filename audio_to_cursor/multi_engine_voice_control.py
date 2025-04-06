@@ -10,12 +10,13 @@ import time
 import google.generativeai as genai
 import numpy as np
 import speech_recognition as sr
-from pyautogui_command_executor import PyAutoGUICommandExecutor
 from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 from pynput.mouse import Button
 from pynput.mouse import Controller as MouseController
 from calibration import CalibrationManager, NoiseFilter, CalibrationError
+
+from audio_to_cursor.pyautogui_command_executor import PyAutoGUICommandExecutor
 
 # Configure logging
 logging.basicConfig(
@@ -417,114 +418,106 @@ class GeminiIntentMapper:
             history_json = json.dumps(self.command_history)
             history_context = f"\nRecent command history (newest to oldest): {history_json}"
         
-        # Build a string of recognition results
-        recognition_results_str = ""
+        # Process each recognition result sequentially
         for result in recognition_results:
-            if result["text"]:
-                recognition_results_str += f"{result['engine'].capitalize()}: '{result['text']}'\n"
-        
-        # Create the prompt for Gemini
-        prompt = f"""
-        Task: You are a voice command interpreter for a computer control system. Map speech recognition results to the correct command.
-        
-        Available commands:
-        {commands_json}
-        
-        Speech recognition results from multiple engines:
-        {recognition_results_str}
-
-        RULES (in priority order):
-        1. If ANY recognition engine exactly matches a command from the available commands list, use that command.
-        2. If ANY recognition engine's result is within 1-2 characters of a command (like "clik" vs "click"), use the command.
-        3. Only if no match is found, look for semantic matches or substrings.
-        
-        Examples:
-        - If engines recognized: ["clip", "click", null] → return "click" (exact match to available command)
-        - If engines recognized: ["write", "right", "rite"] → return "right" (exact match to available command)
-        - If engines recognized: ["moved own", "move down", null] → return "down" (semantic match to command)
-        
-        IMPORTANT: If multiple engines recognized valid commands, prioritize the exact matches in the available commands list.
-        
-        Return ONLY the exact command string from the available commands list. Return nothing if no match can be made.
-        
-        Command:
-        """
-        #random comment
-        logger.info(f"Sending request to Gemini API for multi-engine recognition")
-        
-        try:
-            # Using similar syntax to test.py
-            generation_config = {
-                "temperature": 0.1,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 32,
-            }
-            
-            # Generate content using the Gemini model
-            response = self.model.generate_content(
-                prompt,
-                generation_config=generation_config
-            )
-            
-            # Clean up the response
-            matched_command = response.text.strip()
-            matched_command = matched_command.strip('"\'`')  # Remove quotes if present
-            logger.info(f"Gemini matched multi-engine results to '{matched_command}'")
-            
-            # Handle empty or unknown responses
-            if not matched_command or matched_command.lower() in ["unknown", "none", "n/a", ""]:
-                logger.info("Gemini returned no valid match")
-                # Try direct exact matching as fallback
-                for result in recognition_results:
-                    if result["text"] and result["text"] in self.available_commands:
-                        logger.info(f"Direct matching found command: {result['text']}")
-                        return result["text"]
+            if not result["text"]:
+                continue
                 
-                # If no direct match, try the closest match with edit distance
-                closest_command = self._find_closest_command(recognition_results)
-                if closest_command:
-                    logger.info(f"Found closest command match: {closest_command}")
-                    return closest_command
-                    
-                return None
-            
-            # Check if this is in our available commands
-            if matched_command in self.available_commands:
-                # Update command history
-                self.command_history.insert(0, matched_command)
+            # Direct keyword matching first (fast path)
+            if result["text"] in self.available_commands:
+                logger.info(f"Direct match found in {result['engine']}: '{result['text']}'")
+                self.command_history.insert(0, result["text"])
                 if len(self.command_history) > self.max_history_size:
                     self.command_history.pop()
-                return matched_command
-            else:
-                logger.warning(f"Gemini returned '{matched_command}' which is not in available commands")
-                # Try direct exact matching as fallback
-                for result in recognition_results:
-                    if result["text"] and result["text"] in self.available_commands:
-                        logger.info(f"Direct matching found command: {result['text']}")
-                        return result["text"]
+                return result["text"]
                 
-                # If no direct match, try the closest match with edit distance
-                closest_command = self._find_closest_command(recognition_results)
-                if closest_command:
-                    logger.info(f"Found closest command match: {closest_command}")
-                    return closest_command
-                
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error calling Gemini API: {e}")
-            print(f"Error calling Gemini API: {e}")
+            # Create the prompt for Gemini with just this one result
+            recognition_result_str = f"{result['engine'].capitalize()}: '{result['text']}'"
             
-            # Fallback to the Google result
-            for result in recognition_results:
-                if result["engine"] == "google" and result["text"]:
-                    return result["text"]
-            # Or the first available result
-            for result in recognition_results:
-                if result["text"]:
-                    return result["text"]
-            return None
+            prompt = f"""
+            Task: You are a voice command interpreter for a computer control system. Map the speech recognition result to the correct command.
+            
+            Available commands:
+            {commands_json}
+            
+            Speech recognition result:
+            {recognition_result_str}
+
+            RULES (in priority order):
+            1. If the recognition EXACTLY matches a command from the available commands list, use that command.
+            2. If the recognition is within 1-2 characters of a command (like "clik" vs "click"), use the command.
+            3. Only if no match is found, look for semantic matches or substrings.
+            
+            IMPORTANT: Return ONLY the exact command string from the available commands list. Return "NO_MATCH" if no match can be made.
+            
+            Command:
+            """
+            
+            logger.info(f"Sending request to Gemini API for {result['engine']} recognition")
+            
+            try:
+                # Using similar syntax to test.py
+                generation_config = {
+                    "temperature": 0.1,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": 32,
+                }
+                
+                # Generate content using the Gemini model
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=generation_config
+                )
+                
+                # Clean up the response
+                matched_command = response.text.strip()
+                matched_command = matched_command.strip('"\'`')  # Remove quotes if present
+                logger.info(f"Gemini matched {result['engine']} result to '{matched_command}'")
+                
+                # Handle empty or unknown responses
+                if not matched_command or matched_command.lower() in ["unknown", "none", "n/a", "", "no_match"]:
+                    logger.info(f"No match found for {result['engine']} result, trying next engine")
+                    continue
+                
+                # Check if this is in our available commands
+                if matched_command in self.available_commands:
+                    # Update command history
+                    self.command_history.insert(0, matched_command)
+                    if len(self.command_history) > self.max_history_size:
+                        self.command_history.pop()
+                    return matched_command
+                else:
+                    logger.warning(f"Gemini returned '{matched_command}' which is not in available commands")
+                    # Try to find close matches
+                    closest_command = self._find_closest_command([result])
+                    if closest_command:
+                        logger.info(f"Found closest command match: {closest_command}")
+                        return closest_command
+                    
+            except Exception as e:
+                logger.error(f"Error calling Gemini API for {result['engine']}: {e}")
+                print(f"Error calling Gemini API for {result['engine']}: {e}")
+        
+        # If we've tried all engines and found no match, try a fallback approach
+        logger.info("No matches found from any engine, trying fallback approach")
+        
+        # Fallback to direct text matching and edit distance
+        for result in recognition_results:
+            if not result["text"]:
+                continue
+                
+            # Check for direct match again
+            if result["text"] in self.available_commands:
+                return result["text"]
+        
+        # If no direct match, try the closest match with edit distance
+        closest_command = self._find_closest_command(recognition_results)
+        if closest_command:
+            logger.info(f"Found closest command match as fallback: {closest_command}")
+            return closest_command
+                
+        return None
     
     def _create_command_descriptions(self):
         """Create descriptive explanations for each command"""
@@ -545,6 +538,11 @@ class GeminiIntentMapper:
             "exit": "exit the program",
             "quit": "quit the program",
             "stop listening": "stop the program",
+
+            # Browser commands
+            "open browser": "open the browser",
+            "start typing": "start typing in the browser",
+            "stop typing": "stop typing in the browser",
             
             # Website shortcuts
             **{f"go to {site}": f"Navigate to the {site} website" for site in self.shortcuts.keys()}
@@ -689,25 +687,10 @@ class MultiEngineVoiceControl:
             else:
                 print(f"  {result['engine'].capitalize()}: No result")
         
-        # STEP 2: Check for direct matches first (optimization)
-        for result in recognition_results:
-            if result["text"] and result["text"].lower() in [cmd.lower() for cmd in self.available_commands]:
-                interpreted_command = next(cmd for cmd in self.available_commands if cmd.lower() == result["text"].lower())
-                print(f"\n✅ Direct match found: '{interpreted_command}'")
-                
-                # Log the command
-                self.log_command(recognition_results, interpreted_command)
-                
-                # Execute the command
-                if self.pyautogui_executor:
-                    should_continue = self.pyautogui_executor.execute_command(interpreted_command)
-                else:
-                    should_continue = self.voice_control.execute_command(interpreted_command)
-                
-                return interpreted_command, should_continue
+        # STEP 2: Process each engine sequentially with Gemini
+        print("\nProcessing engines sequentially...")
         
-        # STEP 3: Intent mapping with Gemini for more complex cases
-        print("\nProcessing with AI interpretation...")
+        # STEP 3: Intent mapping with Gemini
         interpreted_command = self.intent_mapper.map_multi_engine_intent(recognition_results)
         
         if not interpreted_command:
@@ -735,7 +718,7 @@ class MultiEngineVoiceControl:
         """Run the multi-engine voice control system"""
         print("Multi-Engine Voice Control System")
         print("================================")
-        print("This system uses multiple speech recognition engines in parallel:")
+        print("This system uses multiple speech recognition engines sequentially:")
         
         # Show which engines are available
         print("- Google (online)")
@@ -744,7 +727,8 @@ class MultiEngineVoiceControl:
         if self.speech_module.engines_available["vosk"]:
             print("- Vosk (offline)")
             
-        print("\nAll recognition results are fed to Gemini AI for better command interpretation.")
+        print("\nEach engine's output is processed individually with Gemini AI.")
+        print("If a command is found from one engine, we stop processing and execute it immediately.")
         print("You can speak naturally to control your computer.")
         
         # Show command execution method
