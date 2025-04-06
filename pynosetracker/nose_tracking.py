@@ -1,9 +1,20 @@
-import cv2
-import mediapipe as mp
-import pyautogui
-import numpy as np
+import os
 import platform
 import time
+
+import cv2
+import mediapipe as mp
+import numpy as np
+import pyautogui
+
+# File-based lock state
+MOUSE_LOCK_FILE = "mouse_lock.flag"
+
+# Helper function to check mouse lock status
+def is_mouse_locked():
+    """Check if mouse is locked by checking the lock file"""
+    return os.path.exists(MOUSE_LOCK_FILE)
+
 
 class NoseTracker:
     def __init__(self, headless=False, default_sensitivity=8.0):
@@ -12,6 +23,9 @@ class NoseTracker:
         self.base_sensitivity = 2.0
         self.smoothing = 0.3
         self.prev_x, self.prev_y = 0, 0
+        
+        # Remember if tracking is active - used for lock/unlock
+        self.tracking_active = False
         
         # Print system info
         print(f"Python version: {platform.python_version()}")
@@ -175,7 +189,12 @@ class NoseTracker:
             
         return False, frame
 
+    def is_mouse_locked(self):
+        """Check if mouse is locked using file-based approach"""
+        return is_mouse_locked()
+
     def run(self):
+        """Main tracking loop with lock checking"""
         self.calibrate_using_keypress()
         
         # Check if calibration was successful
@@ -183,12 +202,55 @@ class NoseTracker:
             print("Error: Calibration failed. Cannot start nose tracking.")
             return
         
+        # Store last lock check time to avoid excessive file checks
+        last_lock_check = 0
+        lock_check_interval = 0.1  # seconds
+        was_locked = False
+        
+        # Mark tracking as active - initial state
+        self.tracking_active = True
+        
         while True:
+            # Check lock state periodically (not every frame)
+            current_time = time.time()
+            if current_time - last_lock_check > lock_check_interval:
+                locked = self.is_mouse_locked()
+                last_lock_check = current_time
+                
+                # Log state changes for better debugging
+                if locked != was_locked:
+                    if locked:
+                        print("🔒 Mouse movement locked. Pausing nose tracking.")
+                        # Explicitly make note that tracking is paused but not stopped
+                        self.tracking_active = False
+                    else:
+                        print("🔓 Mouse movement unlocked. Resuming nose tracking.")
+                        # Re-enable tracking
+                        self.tracking_active = True
+                    was_locked = locked
+            
+            # Capture frame regardless of lock state (keep camera active)
             ret, frame = self.cap.read()
             if not ret:
                 break
-
+                
             frame = cv2.flip(frame, 1)
+            
+            # If locked, show status but don't move cursor
+            if was_locked:
+                if not self.headless:
+                    # Still show camera but with lock message
+                    cv2.putText(frame, "🔒 MOUSE LOCKED BY VOICE", (50, 50), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    cv2.putText(frame, "Manual mouse movement still works", (50, 100), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    cv2.imshow('Nose Tracking', frame)
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord('q'):
+                        break
+                continue  # Skip all tracking while locked
+            
+            # Only process tracking when unlocked
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = self.face_mesh.process(rgb_frame)
             
@@ -209,8 +271,11 @@ class NoseTracker:
                 cursor_x = int(self.prev_x + (screen_x - self.prev_x) * self.smoothing)
                 cursor_y = int(self.prev_y + (screen_y - self.prev_y) * self.smoothing)
                 
-                pyautogui.moveTo(cursor_x, cursor_y)
-                self.prev_x, self.prev_y = cursor_x, cursor_y
+                # Double-check we're not locked before actually moving the mouse
+                # This extra check helps if lock state changes during processing
+                if not self.is_mouse_locked():
+                    pyautogui.moveTo(cursor_x, cursor_y)
+                    self.prev_x, self.prev_y = cursor_x, cursor_y
                 
                 if not self.headless:
                     cv2.circle(frame, tuple(nose_tip), 5, (0, 255, 0), -1)
@@ -235,8 +300,20 @@ class NoseTracker:
                     self.sensitivity = self.base_sensitivity * 10
 
     def run_for_gui(self, frame):
-        """Run nose tracking for a single frame in GUI mode.
-        Returns the annotated frame with tracking visualization."""
+        """Run nose tracking for a single frame in GUI mode with lock checking."""
+        # Check if mouse is locked - using file-based approach
+        if self.is_mouse_locked():
+            cv2.putText(frame, "🔒 MOUSE LOCKED BY VOICE", (50, 50), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame, "Manual mouse movement still works", (50, 100), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            # Make sure we mark tracking as inactive
+            self.tracking_active = False
+            return frame
+            
+        # Set tracking state to active
+        self.tracking_active = True
+            
         if not hasattr(self, 'face_center') or not hasattr(self, 'nose_center'):
             return frame
             
@@ -260,8 +337,10 @@ class NoseTracker:
             cursor_x = int(self.prev_x + (screen_x - self.prev_x) * self.smoothing)
             cursor_y = int(self.prev_y + (screen_y - self.prev_y) * self.smoothing)
             
-            pyautogui.moveTo(cursor_x, cursor_y)
-            self.prev_x, self.prev_y = cursor_x, cursor_y
+            # Double-check lock state before moving the mouse
+            if not self.is_mouse_locked():
+                pyautogui.moveTo(cursor_x, cursor_y)
+                self.prev_x, self.prev_y = cursor_x, cursor_y
             
             # Annotate the frame
             cv2.circle(frame, tuple(nose_tip), 5, (0, 255, 0), -1)

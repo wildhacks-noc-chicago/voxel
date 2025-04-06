@@ -18,3 +18,4 @@ nltk
 faster_whisper
 noisereduce
 librosa
+playsound
